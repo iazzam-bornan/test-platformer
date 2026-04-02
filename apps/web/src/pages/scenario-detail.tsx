@@ -119,7 +119,7 @@ export function ScenarioDetailPage() {
                   <Badge
                     key={tag}
                     variant="secondary"
-                    className="text-[10px] font-mono"
+                    className="font-mono text-[10px]"
                   >
                     {tag}
                   </Badge>
@@ -187,7 +187,10 @@ export function ScenarioDetailPage() {
                         {repo.url}
                       </p>
                     </div>
-                    <Badge variant="outline" className="shrink-0 font-mono text-[10px]">
+                    <Badge
+                      variant="outline"
+                      className="shrink-0 font-mono text-[10px]"
+                    >
                       {repo.ref}
                     </Badge>
                   </div>
@@ -203,36 +206,37 @@ export function ScenarioDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {Object.entries(scenario.config.services).map(
-                  ([name, svc]) => (
-                    <div
-                      key={name}
-                      className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="h-2 w-2 rounded-full bg-primary/60" />
-                        <span className="font-mono text-xs font-semibold">
-                          {name}
-                        </span>
-                      </div>
-                      <div className="flex gap-1.5">
-                        {svc.healthcheck && (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] text-emerald-500 border-emerald-500/30"
-                          >
-                            healthcheck
-                          </Badge>
-                        )}
-                        {svc.ports && svc.ports.length > 0 && (
-                          <Badge variant="outline" className="font-mono text-[10px]">
-                            :{svc.ports[0].containerPort}
-                          </Badge>
-                        )}
-                      </div>
+                {Object.entries(scenario.config.services).map(([name, svc]) => (
+                  <div
+                    key={name}
+                    className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-primary/60" />
+                      <span className="font-mono text-xs font-semibold">
+                        {name}
+                      </span>
                     </div>
-                  )
-                )}
+                    <div className="flex gap-1.5">
+                      {svc.healthcheck && (
+                        <Badge
+                          variant="outline"
+                          className="border-emerald-500/30 text-[10px] text-emerald-500"
+                        >
+                          healthcheck
+                        </Badge>
+                      )}
+                      {svc.ports && svc.ports.length > 0 && (
+                        <Badge
+                          variant="outline"
+                          className="font-mono text-[10px]"
+                        >
+                          :{svc.ports[0].containerPort}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </CardContent>
             </Card>
 
@@ -257,7 +261,7 @@ export function ScenarioDetailPage() {
                             {name}
                           </span>
                         </div>
-                        <span className="truncate pl-4 text-[10px] text-muted-foreground font-mono">
+                        <span className="truncate pl-4 font-mono text-[10px] text-muted-foreground">
                           {infra.image}
                         </span>
                       </div>
@@ -285,10 +289,14 @@ export function ScenarioDetailPage() {
                 )}
                 {scenario.config.tests.runner.httpChecks && (
                   <div className="rounded-md bg-muted/50 px-3 py-2">
-                    <p className="text-[10px] text-muted-foreground">HTTP Checks</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      HTTP Checks
+                    </p>
                     <div className="mt-1 space-y-1">
                       {scenario.config.tests.runner.httpChecks.map((url) => (
-                        <p key={url} className="font-mono text-xs">{url}</p>
+                        <p key={url} className="font-mono text-xs">
+                          {url}
+                        </p>
                       ))}
                     </div>
                   </div>
@@ -296,7 +304,7 @@ export function ScenarioDetailPage() {
                 {scenario.config.tests.runner.image && (
                   <div className="rounded-md bg-muted/50 px-3 py-2">
                     <p className="text-[10px] text-muted-foreground">Image</p>
-                    <p className="mt-0.5 font-mono text-xs truncate">
+                    <p className="mt-0.5 truncate font-mono text-xs">
                       {scenario.config.tests.runner.image}
                     </p>
                   </div>
