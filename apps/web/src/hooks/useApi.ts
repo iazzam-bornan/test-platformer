@@ -178,3 +178,115 @@ export function useDockerStatus() {
     refetchInterval: 30000,
   })
 }
+
+export interface TestResult {
+  url?: string
+  iteration?: number
+  status?: number
+  ok?: boolean
+  duration?: number
+  timestamp?: string
+  error?: string
+  body?: string
+  // summary fields
+  type?: "summary"
+  totalChecks?: number
+  passed?: number
+  failed?: number
+  passRate?: number
+}
+
+export function useServiceLogs(runId: string, service: string, enabled = true) {
+  const [logs, setLogs] = useState<string[]>([])
+  const [connected, setConnected] = useState(false)
+  const eventSourceRef = useRef<EventSource | null>(null)
+
+  const connect = useCallback(() => {
+    if (!enabled || !runId || !service) return
+
+    const es = new EventSource(
+      `${API_URL}/runs/${runId}/logs/service/${service}`
+    )
+    eventSourceRef.current = es
+
+    es.addEventListener("log", (event) => {
+      setLogs((prev) => [...prev, event.data])
+    })
+
+    es.addEventListener("status", () => {
+      es.close()
+      setConnected(false)
+    })
+
+    es.addEventListener("error", () => {
+      es.close()
+      setConnected(false)
+    })
+
+    es.onopen = () => setConnected(true)
+    es.onerror = () => {
+      setConnected(false)
+      es.close()
+    }
+  }, [runId, service, enabled])
+
+  useEffect(() => {
+    setLogs([])
+    connect()
+    return () => {
+      eventSourceRef.current?.close()
+    }
+  }, [connect])
+
+  return { logs, connected }
+}
+
+export function useTestResults(runId: string, enabled = true) {
+  const [results, setResults] = useState<TestResult[]>([])
+  const [logs, setLogs] = useState<string[]>([])
+  const [summary, setSummary] = useState<TestResult | null>(null)
+  const [connected, setConnected] = useState(false)
+  const eventSourceRef = useRef<EventSource | null>(null)
+
+  const connect = useCallback(() => {
+    if (!enabled || !runId) return
+
+    const es = new EventSource(`${API_URL}/runs/${runId}/results`)
+    eventSourceRef.current = es
+
+    es.addEventListener("result", (event) => {
+      try {
+        const result: TestResult = JSON.parse(event.data)
+        if (result.type === "summary") {
+          setSummary(result)
+        } else {
+          setResults((prev) => [...prev, result])
+        }
+      } catch {}
+    })
+
+    es.addEventListener("log", (event) => {
+      setLogs((prev) => [...prev, event.data])
+    })
+
+    es.addEventListener("status", () => {
+      es.close()
+      setConnected(false)
+    })
+
+    es.onopen = () => setConnected(true)
+    es.onerror = () => {
+      setConnected(false)
+      es.close()
+    }
+  }, [runId, enabled])
+
+  useEffect(() => {
+    connect()
+    return () => {
+      eventSourceRef.current?.close()
+    }
+  }, [connect])
+
+  return { results, logs, summary, connected }
+}

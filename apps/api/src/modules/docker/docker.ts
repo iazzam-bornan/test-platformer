@@ -278,3 +278,79 @@ export async function isDockerAvailable(): Promise<boolean> {
   const result = await exec("docker", ["info"])
   return result.exitCode === 0
 }
+
+/**
+ * Stream container logs in real-time via `docker logs -f`.
+ * Returns an abort function to stop streaming.
+ */
+export function streamContainerLogs(
+  containerId: string,
+  onLine: (line: string) => void
+): () => void {
+  const proc = spawn("docker", ["logs", "-f", "--timestamps", containerId], {
+    shell: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  })
+
+  const handleData = (data: Buffer) => {
+    const text = data.toString()
+    for (const line of text.split("\n")) {
+      const trimmed = line.trim()
+      if (trimmed) onLine(trimmed)
+    }
+  }
+
+  proc.stdout.on("data", handleData)
+  proc.stderr.on("data", handleData)
+
+  return () => {
+    try {
+      proc.kill()
+    } catch {}
+  }
+}
+
+const RESULT_PREFIX = "@@RESULT@@"
+
+/**
+ * Stream test-runner container logs, splitting:
+ * - stdout lines -> onLog (human-readable)
+ * - stderr lines with @@RESULT@@ prefix -> onResult (parsed JSON)
+ * - other stderr lines -> onLog
+ */
+export function streamTestRunnerLogs(
+  containerId: string,
+  onLog: (line: string) => void,
+  onResult: (json: string) => void
+): () => void {
+  // Use --timestamps on stdout, raw stderr to avoid docker prepending timestamps to our JSON
+  const proc = spawn("docker", ["logs", "-f", containerId], {
+    shell: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  })
+
+  proc.stdout.on("data", (data: Buffer) => {
+    for (const line of data.toString().split("\n")) {
+      const trimmed = line.trim()
+      if (trimmed) onLog(trimmed)
+    }
+  })
+
+  proc.stderr.on("data", (data: Buffer) => {
+    for (const line of data.toString().split("\n")) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      if (trimmed.startsWith(RESULT_PREFIX)) {
+        onResult(trimmed.slice(RESULT_PREFIX.length))
+      } else {
+        onLog(trimmed)
+      }
+    }
+  })
+
+  return () => {
+    try {
+      proc.kill()
+    } catch {}
+  }
+}

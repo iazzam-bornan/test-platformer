@@ -4,6 +4,7 @@ import { store } from "./store"
 import { createWorkspace, destroyWorkspace, getReposDir, getLogsDir, getArtifactsDir } from "../workspace/manager"
 import { cloneAllRepos } from "../git/clone"
 import { generateCompose, composeToYaml } from "../docker/compose-generator"
+import { writeTestScript } from "../docker/test-script"
 import {
   writeComposeFile,
   composeUp,
@@ -46,6 +47,14 @@ export async function executeRun(
 
     // --- BUILDING ---
     store.updateStatus(runId, "building")
+
+    // Generate test script if using httpChecks
+    const httpChecks = scenario.tests.runner.httpChecks
+    if (httpChecks && httpChecks.length > 0 && !scenario.tests.runner.command) {
+      await writeTestScript(workspaceDir, httpChecks, 10, 1000)
+      log(`Generated test script with ${httpChecks.length} checks x 10 iterations`)
+    }
+
     log("Generating Docker Compose configuration...")
     const { compose, portMap } = generateCompose(
       scenario,

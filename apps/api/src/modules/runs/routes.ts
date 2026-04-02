@@ -4,6 +4,7 @@ import { store } from "./store"
 import { executeRun } from "./orchestrator"
 import { loadScenarioById } from "../scenarios/loader"
 import { logEmitter } from "../logs/emitter"
+import { getContainerIds, streamContainerLogs, streamTestRunnerLogs } from "../docker/docker"
 
 export const runRoutes = new Hono()
 
@@ -145,4 +146,104 @@ runRoutes.get("/:id/logs/files", async (c) => {
   } catch {
     return c.json({ data: {} })
   }
+})
+
+// SSE: stream a specific service's Docker logs in real-time
+runRoutes.get("/:id/logs/service/:service", (c) => {
+  const runId = c.req.param("id")
+  const serviceName = c.req.param("service")
+  const run = store.getRun(runId)
+  if (!run) return c.json({ error: "Run not found" }, 404)
+
+  const projectName = `tp-${runId}`
+
+  return streamSSE(c, async (stream) => {
+    // Find the container ID for this service
+    let containerId = ""
+    const retries = 10
+    for (let i = 0; i < retries; i++) {
+      const ids = await getContainerIds(projectName)
+      if (ids[serviceName]) {
+        containerId = ids[serviceName]
+        break
+      }
+      await stream.sleep(2000)
+    }
+
+    if (!containerId) {
+      await stream.writeSSE({ data: `Container for '${serviceName}' not found`, event: "error" })
+      return
+    }
+
+    // Stream logs
+    const stop = streamContainerLogs(containerId, (line) => {
+      stream.writeSSE({ data: line, event: "log" }).catch(() => stop())
+    })
+
+    // Keep alive until run finishes
+    const isTerminal = (s: string) =>
+      ["passed", "failed", "cancelled", "error"].includes(s)
+
+    while (true) {
+      const current = store.getRun(runId)
+      if (!current || isTerminal(current.status)) {
+        stop()
+        await stream.writeSSE({ data: current?.status ?? "unknown", event: "status" })
+        break
+      }
+      await stream.sleep(1000)
+    }
+  })
+})
+
+// SSE: stream test results by parsing test-runner container's stderr
+runRoutes.get("/:id/results", (c) => {
+  const runId = c.req.param("id")
+  const run = store.getRun(runId)
+  if (!run) return c.json({ error: "Run not found" }, 404)
+
+  const projectName = `tp-${runId}`
+
+  return streamSSE(c, async (stream) => {
+    // Wait for the test-runner container to appear
+    let containerId = ""
+    for (let i = 0; i < 30; i++) {
+      const ids = await getContainerIds(projectName)
+      if (ids["test-runner"]) {
+        containerId = ids["test-runner"]
+        break
+      }
+      await stream.sleep(2000)
+    }
+
+    if (!containerId) {
+      await stream.writeSSE({ data: "Test runner container not found", event: "error" })
+      return
+    }
+
+    // Stream test-runner logs, splitting stdout (logs) from stderr (results)
+    const stop = streamTestRunnerLogs(
+      containerId,
+      (logLine) => {
+        stream.writeSSE({ data: logLine, event: "log" }).catch(() => stop())
+      },
+      (resultJson) => {
+        stream.writeSSE({ data: resultJson, event: "result" }).catch(() => stop())
+      }
+    )
+
+    // Keep alive until run finishes
+    const isTerminal = (s: string) =>
+      ["passed", "failed", "cancelled", "error"].includes(s)
+
+    while (true) {
+      const current = store.getRun(runId)
+      if (!current || isTerminal(current.status)) {
+        stop()
+        await stream.writeSSE({ data: current?.status ?? "unknown", event: "status" })
+        break
+      }
+      await stream.sleep(1000)
+    }
+  })
 })

@@ -5,9 +5,12 @@ import {
   useRunLogs,
   useRunArtifacts,
   useCleanupRun,
+  useServiceLogs,
+  useTestResults,
   getArtifactUrl,
 } from "../hooks/useApi"
-import { useEffect, useRef } from "react"
+import type { TestResult } from "../hooks/useApi"
+import { useEffect, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@workspace/ui/components/button"
@@ -65,13 +68,148 @@ function StatusBadge({ status }: { status: RunStatus }) {
   )
 }
 
+function LogViewer({ logs, empty }: { logs: string[]; empty: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight
+  }, [logs])
+
+  return (
+    <div
+      ref={ref}
+      className="max-h-[500px] overflow-auto rounded-lg border bg-card p-4 font-mono text-xs leading-6"
+    >
+      {logs.length === 0 ? (
+        <p className="text-muted-foreground">{empty}</p>
+      ) : (
+        logs.map((line, i) => (
+          <div key={i} className="whitespace-pre-wrap text-foreground/80 hover:text-foreground">
+            {line}
+          </div>
+        ))
+      )}
+    </div>
+  )
+}
+
+function ServiceLogViewer({ runId, service, isRunning }: { runId: string; service: string; isRunning: boolean }) {
+  const { logs, connected } = useServiceLogs(runId, service, isRunning)
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="font-mono text-xs font-semibold">{service}</span>
+        {connected && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
+      </div>
+      <LogViewer logs={logs} empty={`Waiting for ${service} logs...`} />
+    </div>
+  )
+}
+
+function ResultsView({ results, summary }: { results: TestResult[]; summary: TestResult | null }) {
+  const total = summary?.totalChecks ?? results.length
+  const passed = summary?.passed ?? results.filter((r) => r.ok).length
+  const failed = summary?.failed ?? results.filter((r) => !r.ok).length
+
+  // Group by URL
+  const urlGroups = new Map<string, TestResult[]>()
+  for (const r of results) {
+    if (!r.url) continue
+    const group = urlGroups.get(r.url) ?? []
+    group.push(r)
+    urlGroups.set(r.url, group)
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Progress bar */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">
+            {results.length} / {total || "?"} checks
+          </span>
+          <span className="font-mono">
+            <span className="text-emerald-400">{passed} passed</span>
+            {failed > 0 && <span className="text-red-400 ml-2">{failed} failed</span>}
+          </span>
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-emerald-400 transition-all duration-300"
+            style={{ width: total ? `${(passed / total) * 100}%` : "0%" }}
+          />
+        </div>
+      </div>
+
+      {/* Per-URL breakdown */}
+      {[...urlGroups.entries()].map(([url, checks]) => {
+        const urlPassed = checks.filter((c) => c.ok).length
+        const urlFailed = checks.filter((c) => !c.ok).length
+        const avgDuration = Math.round(
+          checks.reduce((s, c) => s + (c.duration ?? 0), 0) / checks.length
+        )
+
+        return (
+          <div key={url} className="rounded-lg border">
+            <div className="flex items-center justify-between border-b px-4 py-2.5">
+              <span className="font-mono text-xs font-semibold truncate">{url}</span>
+              <div className="flex items-center gap-3 text-[10px] shrink-0 ml-4">
+                <span className="text-muted-foreground">avg {avgDuration}ms</span>
+                <span className="text-emerald-400">{urlPassed}</span>
+                {urlFailed > 0 && <span className="text-red-400">{urlFailed}</span>}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1 px-4 py-3">
+              {checks.map((check, i) => (
+                <div
+                  key={i}
+                  title={`#${check.iteration} — ${check.status} — ${check.duration}ms${check.error ? ` — ${check.error}` : ""}`}
+                  className={`h-6 w-6 rounded text-[9px] font-mono font-bold flex items-center justify-center transition-all ${
+                    check.ok
+                      ? "bg-emerald-400/15 text-emerald-400"
+                      : "bg-red-400/15 text-red-400"
+                  }`}
+                >
+                  {check.iteration}
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      {results.length === 0 && (
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          Waiting for test results...
+        </p>
+      )}
+
+      {/* Summary */}
+      {summary && (
+        <div className={`rounded-lg border p-4 text-center ${
+          summary.passRate === 100
+            ? "border-emerald-400/30 bg-emerald-400/5"
+            : "border-red-400/30 bg-red-400/5"
+        }`}>
+          <p className="text-2xl font-bold font-mono tabular-nums">
+            {summary.passRate}%
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {summary.passed}/{summary.totalChecks} checks passed
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function RunLivePage() {
   const { id } = useParams({ from: "/runs/$id" })
   const navigate = useNavigate()
   const { data: run, isLoading, error } = useRunDetail(id)
   const cancelRun = useCancelRun()
   const cleanupRun = useCleanupRun()
-  const logContainerRef = useRef<HTMLDivElement>(null)
+  const [selectedService, setSelectedService] = useState<string | null>(null)
 
   const isRunning =
     run?.status === "pending" ||
@@ -84,22 +222,12 @@ export function RunLivePage() {
 
   const { logs, connected } = useRunLogs(id, !!run && isRunning)
   const { data: artifacts } = useRunArtifacts(id)
-
-  useEffect(() => {
-    if (logContainerRef.current) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight
-    }
-  }, [logs])
+  const { results, logs: testRunnerLogs, summary } = useTestResults(id, !!run && isRunning)
 
   if (error) {
     return (
       <div className="space-y-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-2"
-          onClick={() => navigate({ to: "/" })}
-        >
+        <Button variant="ghost" size="sm" className="-ml-2" onClick={() => navigate({ to: "/" })}>
           <HugeiconsIcon icon={ArrowLeft02Icon} size={14} /> Back
         </Button>
         <Alert variant="destructive">
@@ -123,28 +251,22 @@ export function RunLivePage() {
 
   const isTerminal = ["passed", "failed", "cancelled", "error"].includes(run.status)
   const isPreserved =
-    isTerminal &&
-    run.preserveOnFailure &&
-    (run.status === "failed" || run.status === "error")
+    isTerminal && run.preserveOnFailure && (run.status === "failed" || run.status === "error")
 
   const startTime = new Date(run.startedAt)
   const endTime = run.finishedAt ? new Date(run.finishedAt) : null
-  const durationMs = endTime
-    ? endTime.getTime() - startTime.getTime()
-    : Date.now() - startTime.getTime()
+  const durationMs = endTime ? endTime.getTime() - startTime.getTime() : Date.now() - startTime.getTime()
   const durationSec = Math.floor(durationMs / 1000)
-  const durationStr =
-    durationSec >= 60
-      ? `${Math.floor(durationSec / 60)}m ${durationSec % 60}s`
-      : `${durationSec}s`
+  const durationStr = durationSec >= 60 ? `${Math.floor(durationSec / 60)}m ${durationSec % 60}s` : `${durationSec}s`
+
+  const serviceNames = run.services.map((s: (typeof run.services)[0]) => s.name)
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <Button
-          variant="ghost"
-          size="sm"
+          variant="ghost" size="sm"
           className="mb-4 -ml-2 text-muted-foreground hover:text-foreground"
           onClick={() => navigate({ to: "/history" })}
         >
@@ -153,33 +275,19 @@ export function RunLivePage() {
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2">
             <div className="flex items-center gap-3">
-              <h1 className="font-heading text-2xl font-bold tracking-tight">
-                {run.scenarioName}
-              </h1>
+              <h1 className="font-heading text-2xl font-bold tracking-tight">{run.scenarioName}</h1>
               <StatusBadge status={run.status as RunStatus} />
             </div>
-            <p className="font-mono text-xs text-muted-foreground">
-              {run.id}
-            </p>
+            <p className="font-mono text-xs text-muted-foreground">{run.id}</p>
           </div>
           <div className="flex gap-2">
             {isPreserved && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => cleanupRun.mutate(run.id)}
-                disabled={cleanupRun.isPending}
-              >
+              <Button variant="outline" size="sm" onClick={() => cleanupRun.mutate(run.id)} disabled={cleanupRun.isPending}>
                 Destroy Env
               </Button>
             )}
             {isRunning && run.status !== "cleaning_up" && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => cancelRun.mutate(run.id)}
-                disabled={cancelRun.isPending}
-              >
+              <Button variant="destructive" size="sm" onClick={() => cancelRun.mutate(run.id)} disabled={cancelRun.isPending}>
                 Cancel
               </Button>
             )}
@@ -187,56 +295,52 @@ export function RunLivePage() {
         </div>
       </div>
 
-      {/* Stats row */}
+      {/* Stats */}
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-lg border p-3">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Started
-          </p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Started</p>
           <p className="mt-1 font-mono text-sm">{startTime.toLocaleString()}</p>
         </div>
         <div className="rounded-lg border p-3">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Duration
-          </p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Duration</p>
           <p className="mt-1 font-mono text-sm tabular-nums">{durationStr}</p>
         </div>
         <div className="rounded-lg border p-3">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Exit Code
-          </p>
-          <p className="mt-1 font-mono text-sm">
-            {run.exitCode !== undefined && run.exitCode !== null
-              ? run.exitCode
-              : "\u2014"}
-          </p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Exit Code</p>
+          <p className="mt-1 font-mono text-sm">{run.exitCode ?? "\u2014"}</p>
         </div>
       </div>
 
       {isPreserved && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-500">
-          Environment preserved for debugging. Click &quot;Destroy Env&quot; when
-          done.
+          Environment preserved for debugging. Click &quot;Destroy Env&quot; when done.
         </div>
       )}
 
       {/* Tabs */}
-      <Tabs defaultValue="logs" className="w-full">
+      <Tabs defaultValue="results" className="w-full">
         <TabsList>
-          <TabsTrigger value="logs" className="gap-1.5">
-            Logs
-            {connected && (
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="services">
-            Services
-            {run.services.length > 0 && (
+          <TabsTrigger value="results">
+            Results
+            {results.length > 0 && (
               <Badge variant="secondary" className="ml-1.5 px-1.5 text-[10px]">
-                {run.services.length}
+                {results.length}
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="orchestrator" className="gap-1.5">
+            Orchestrator
+            {connected && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
+          </TabsTrigger>
+          <TabsTrigger value="services">
+            Service Logs
+            {serviceNames.length > 0 && (
+              <Badge variant="secondary" className="ml-1.5 px-1.5 text-[10px]">
+                {serviceNames.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="health">Services</TabsTrigger>
           <TabsTrigger value="artifacts">
             Artifacts
             {artifacts && artifacts.length > 0 && (
@@ -248,28 +352,63 @@ export function RunLivePage() {
           <TabsTrigger value="config">Config</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="logs" className="mt-4">
-          <div
-            ref={logContainerRef}
-            className="max-h-[520px] overflow-auto rounded-lg border bg-card p-4 font-mono text-xs leading-6"
-          >
-            {logs.length === 0 ? (
-              <p className="text-muted-foreground">
-                {isRunning
-                  ? "Waiting for logs..."
-                  : "No logs available for this run."}
-              </p>
-            ) : (
-              logs.map((line, i) => (
-                <div key={i} className="whitespace-pre-wrap text-foreground/80 hover:text-foreground">
-                  {line}
-                </div>
-              ))
-            )}
-          </div>
+        {/* Results tab */}
+        <TabsContent value="results" className="mt-4">
+          <ResultsView results={results} summary={summary} />
+          {testRunnerLogs.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-semibold text-muted-foreground">Test Runner Output</p>
+              <LogViewer logs={testRunnerLogs} empty="" />
+            </div>
+          )}
         </TabsContent>
 
+        {/* Orchestrator logs tab */}
+        <TabsContent value="orchestrator" className="mt-4">
+          <LogViewer
+            logs={logs}
+            empty={isRunning ? "Waiting for logs..." : "No logs available."}
+          />
+        </TabsContent>
+
+        {/* Per-service Docker logs tab */}
         <TabsContent value="services" className="mt-4">
+          {serviceNames.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+              No services started yet.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-1.5">
+                {serviceNames.map((name: string) => (
+                  <Button
+                    key={name}
+                    variant={selectedService === name ? "default" : "outline"}
+                    size="sm"
+                    className="font-mono text-xs"
+                    onClick={() => setSelectedService(name === selectedService ? null : name)}
+                  >
+                    {name}
+                  </Button>
+                ))}
+              </div>
+              {selectedService ? (
+                <ServiceLogViewer
+                  runId={id}
+                  service={selectedService}
+                  isRunning={isRunning}
+                />
+              ) : (
+                <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                  Select a service above to view its Docker logs.
+                </div>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Health tab */}
+        <TabsContent value="health" className="mt-4">
           {run.services.length === 0 ? (
             <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               No services started yet.
@@ -277,45 +416,31 @@ export function RunLivePage() {
           ) : (
             <div className="space-y-2">
               {run.services.map((service: (typeof run.services)[0]) => (
-                <div
-                  key={service.name}
-                  className="flex items-center justify-between rounded-lg border p-3"
-                >
+                <div key={service.name} className="flex items-center justify-between rounded-lg border p-3">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
-                      <div
-                        className={`h-2 w-2 rounded-full ${
-                          service.healthStatus === "healthy"
-                            ? "bg-emerald-400"
-                            : service.healthStatus === "unhealthy"
-                              ? "bg-red-400"
-                              : "bg-muted-foreground"
-                        }`}
-                      />
-                      <span className="font-mono text-sm font-semibold">
-                        {service.name}
-                      </span>
+                      <div className={`h-2 w-2 rounded-full ${
+                        service.healthStatus === "healthy" ? "bg-emerald-400"
+                          : service.healthStatus === "unhealthy" ? "bg-red-400"
+                          : "bg-muted-foreground"
+                      }`} />
+                      <span className="font-mono text-sm font-semibold">{service.name}</span>
                     </div>
                     <p className="pl-4 font-mono text-[10px] text-muted-foreground">
                       {service.image}
-                      {service.containerId &&
-                        ` \u00B7 ${service.containerId.slice(0, 12)}`}
+                      {service.containerId && ` \u00B7 ${service.containerId.slice(0, 12)}`}
                     </p>
                     {Object.keys(service.mappedPorts).length > 0 && (
                       <p className="pl-4 font-mono text-[10px] text-muted-foreground">
-                        {Object.entries(service.mappedPorts)
-                          .map(([p, m]) => `${p}\u2192${m}`)
-                          .join("  ")}
+                        {Object.entries(service.mappedPorts).map(([p, m]) => `${p}\u2192${m}`).join("  ")}
                       </p>
                     )}
                   </div>
                   <Badge
                     variant={
-                      service.healthStatus === "healthy"
-                        ? "default"
-                        : service.healthStatus === "unhealthy"
-                          ? "destructive"
-                          : "secondary"
+                      service.healthStatus === "healthy" ? "default"
+                        : service.healthStatus === "unhealthy" ? "destructive"
+                        : "secondary"
                     }
                     className="text-[10px]"
                   >
@@ -327,39 +452,25 @@ export function RunLivePage() {
           )}
         </TabsContent>
 
+        {/* Artifacts tab */}
         <TabsContent value="artifacts" className="mt-4">
           {!artifacts || artifacts.length === 0 ? (
             <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-              {isTerminal
-                ? "No artifacts collected."
-                : "Artifacts will appear after the run completes."}
+              {isTerminal ? "No artifacts collected." : "Artifacts will appear after the run completes."}
             </div>
           ) : (
             <div className="space-y-2">
               {artifacts.map((artifact) => (
-                <div
-                  key={artifact.id}
-                  className="flex items-center justify-between rounded-lg border p-3"
-                >
+                <div key={artifact.id} className="flex items-center justify-between rounded-lg border p-3">
                   <div className="space-y-0.5">
-                    <p className="font-mono text-xs font-semibold">
-                      {artifact.name}
-                    </p>
+                    <p className="font-mono text-xs font-semibold">{artifact.name}</p>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-[10px]">
-                        {artifact.type}
-                      </Badge>
-                      <span className="text-[10px] text-muted-foreground">
-                        {artifact.path}
-                      </span>
+                      <Badge variant="outline" className="text-[10px]">{artifact.type}</Badge>
+                      <span className="text-[10px] text-muted-foreground">{artifact.path}</span>
                     </div>
                   </div>
                   <Button variant="outline" size="sm" asChild>
-                    <a
-                      href={getArtifactUrl(id, artifact.path)}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                    <a href={getArtifactUrl(id, artifact.path)} target="_blank" rel="noreferrer">
                       Download
                     </a>
                   </Button>
@@ -369,12 +480,11 @@ export function RunLivePage() {
           )}
         </TabsContent>
 
+        {/* Config tab */}
         <TabsContent value="config" className="mt-4 space-y-4">
           {run.overrides && Object.keys(run.overrides).length > 0 && (
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Overrides</CardTitle>
-              </CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Overrides</CardTitle></CardHeader>
               <CardContent>
                 <pre className="max-h-[200px] overflow-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed">
                   {JSON.stringify(run.overrides, null, 2)}
@@ -385,9 +495,7 @@ export function RunLivePage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">Scenario Config</CardTitle>
-              <CardDescription className="text-xs">
-                Full configuration used for this run
-              </CardDescription>
+              <CardDescription className="text-xs">Full configuration used for this run</CardDescription>
             </CardHeader>
             <CardContent>
               <pre className="max-h-[400px] overflow-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed">

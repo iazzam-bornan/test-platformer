@@ -140,25 +140,18 @@ export function generateCompose(
   // Test runner service
   const runner = scenario.tests.runner
   const testSvc: ComposeService = {}
+  const useHttpChecks = !runner.command && runner.httpChecks && runner.httpChecks.length > 0
 
-  // Generate command from httpChecks if no explicit command
   if (runner.command) {
     testSvc.command = runner.command
-  } else if (runner.httpChecks && runner.httpChecks.length > 0) {
-    const fetches = runner.httpChecks
-      .map((url) => `fetch('${url}').then(r=>{if(!r.ok)throw new Error('${url} returned '+r.status)})`)
-      .join(",")
-    testSvc.command = [
-      "node",
-      "-e",
-      `Promise.all([${fetches}]).then(()=>console.log('All checks passed')).catch(e=>{console.error(e.message);process.exit(1)})`,
-    ]
+  } else if (useHttpChecks) {
+    // Command will run the generated test script
+    testSvc.command = ["node", "/test-script.mjs"]
   }
 
   if (runner.image) {
     testSvc.image = runner.image
-  } else if (runner.httpChecks && !runner.image && !runner.build) {
-    // Default to node for httpChecks
+  } else if (useHttpChecks && !runner.build) {
     testSvc.image = "node:20-slim"
   } else if (runner.build) {
     testSvc.build = {
@@ -171,13 +164,25 @@ export function generateCompose(
     testSvc.environment = runner.env
   }
 
+  // Volumes: mount repos, test script, and results dir
+  testSvc.volumes = []
+
   if (runner.mountRepos) {
-    testSvc.volumes = runner.mountRepos.map(
-      (repo) => `${path.join(reposDir, repo)}:/app/${repo}`
-    )
+    for (const repo of runner.mountRepos) {
+      testSvc.volumes.push(`${path.join(reposDir, repo)}:/app/${repo}`)
+    }
     if (!testSvc.working_dir) {
       testSvc.working_dir = `/app/${runner.mountRepos[0]}`
     }
+  }
+
+  if (useHttpChecks) {
+    // Mount the generated test script (results stream via stderr, no file needed)
+    testSvc.volumes.push(`${path.join(reposDir, "..", "test-script.mjs")}:/test-script.mjs:ro`)
+  }
+
+  if (testSvc.volumes.length === 0) {
+    delete testSvc.volumes
   }
 
   if (runner.dependsOn) {
