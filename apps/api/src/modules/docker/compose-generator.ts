@@ -26,12 +26,6 @@ interface ComposeFile {
   networks: { default: { name: string } }
 }
 
-let nextPort = 10000
-
-function allocatePort(): number {
-  return nextPort++
-}
-
 export function generateCompose(
   scenario: Scenario,
   runId: string,
@@ -56,15 +50,14 @@ export function generateCompose(
       }
 
       if (infra.ports) {
-        svc.ports = []
         portMap[name] = {}
         for (const p of infra.ports) {
-          const hostPort =
-            p.hostPort === "auto" || p.hostPort === undefined
-              ? allocatePort()
-              : p.hostPort
-          svc.ports.push(`${hostPort}:${p.containerPort}`)
-          portMap[name][p.containerPort] = hostPort
+          if (typeof p.hostPort === "number") {
+            if (!svc.ports) svc.ports = []
+            svc.ports.push(`${p.hostPort}:${p.containerPort}`)
+            portMap[name][p.containerPort] = p.hostPort
+          }
+          // "auto" or undefined = no host mapping, containers use internal network
         }
       }
 
@@ -113,15 +106,13 @@ export function generateCompose(
     }
 
     if (service.ports) {
-      svc.ports = []
       portMap[name] = {}
       for (const p of service.ports) {
-        const hostPort =
-          p.hostPort === "auto" || p.hostPort === undefined
-            ? allocatePort()
-            : p.hostPort
-        svc.ports.push(`${hostPort}:${p.containerPort}`)
-        portMap[name][p.containerPort] = hostPort
+        if (typeof p.hostPort === "number") {
+          if (!svc.ports) svc.ports = []
+          svc.ports.push(`${p.hostPort}:${p.containerPort}`)
+          portMap[name][p.containerPort] = p.hostPort
+        }
       }
     }
 
@@ -148,12 +139,27 @@ export function generateCompose(
 
   // Test runner service
   const runner = scenario.tests.runner
-  const testSvc: ComposeService = {
-    command: runner.command,
+  const testSvc: ComposeService = {}
+
+  // Generate command from httpChecks if no explicit command
+  if (runner.command) {
+    testSvc.command = runner.command
+  } else if (runner.httpChecks && runner.httpChecks.length > 0) {
+    const fetches = runner.httpChecks
+      .map((url) => `fetch('${url}').then(r=>{if(!r.ok)throw new Error('${url} returned '+r.status)})`)
+      .join(",")
+    testSvc.command = [
+      "node",
+      "-e",
+      `Promise.all([${fetches}]).then(()=>console.log('All checks passed')).catch(e=>{console.error(e.message);process.exit(1)})`,
+    ]
   }
 
   if (runner.image) {
     testSvc.image = runner.image
+  } else if (runner.httpChecks && !runner.image && !runner.build) {
+    // Default to node for httpChecks
+    testSvc.image = "node:20-slim"
   } else if (runner.build) {
     testSvc.build = {
       context: runner.build.context,
@@ -211,9 +217,10 @@ function convertHealthcheck(
 
   switch (hc.type) {
     case "http":
+      // Fallback chain: wget (alpine), curl (full images), node fetch (node images)
       test = [
         "CMD-SHELL",
-        `curl -f http://localhost:${hc.port}${hc.path} || exit 1`,
+        `wget --spider -q http://localhost:${hc.port}${hc.path} || curl -sf http://localhost:${hc.port}${hc.path} > /dev/null || node -e "fetch('http://localhost:${hc.port}${hc.path}').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"`,
       ]
       break
     case "command":

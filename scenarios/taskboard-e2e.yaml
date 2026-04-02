@@ -1,0 +1,80 @@
+version: 1
+
+name: taskboard-e2e
+description: Full-stack Task Board app with MongoDB and Redis
+tags:
+  - e2e
+  - fullstack
+  - mongo
+  - redis
+
+repos: {}
+
+services:
+  backend:
+    image: ghcr.io/iazzam-bornan/sample-app/backend:latest
+    env:
+      MONGO_URL: mongodb://mongo:27017/taskboard
+      REDIS_URL: redis://redis:6379
+      PORT: "3000"
+    ports:
+      - containerPort: 3000
+        hostPort: auto
+    healthcheck:
+      type: http
+      path: /health
+      port: 3000
+    dependsOn:
+      - mongo
+      - redis
+
+  frontend:
+    image: ghcr.io/iazzam-bornan/sample-app/frontend:latest
+    ports:
+      - containerPort: 80
+        hostPort: auto
+    healthcheck:
+      type: http
+      path: /
+      port: 80
+    dependsOn:
+      - backend
+
+infrastructure:
+  mongo:
+    image: ghcr.io/iazzam-bornan/sample-app/mongo-seeded:latest
+    ports:
+      - containerPort: 27017
+        hostPort: auto
+    healthcheck:
+      type: command
+      command: ["mongosh", "--eval", "db.runCommand('ping').ok"]
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - containerPort: 6379
+        hostPort: auto
+    healthcheck:
+      type: command
+      command: ["redis-cli", "ping"]
+
+tests:
+  runner:
+    httpChecks:
+      - http://localhost:3000/health
+      - http://localhost:80
+    dependsOn:
+      - frontend
+      - backend
+      - mongo
+      - redis
+
+artifacts:
+  logs: true
+  screenshots: false
+  videos: false
+
+cleanup:
+  destroyOnFinish: true
+  preserveOnFailure: true

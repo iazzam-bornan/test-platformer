@@ -26,6 +26,8 @@ export async function executeRun(
 ): Promise<void> {
   const projectName = `tp-${runId}`
 
+  let stopPolling = false
+
   function log(message: string) {
     const line = `[${new Date().toISOString()}] ${message}`
     logEmitter.emit(runId, line)
@@ -83,10 +85,12 @@ export async function executeRun(
     // --- BOOTING ---
     store.updateStatus(runId, "booting")
     log("Starting Docker Compose stack...")
-    const upResult = await composeUp(workspaceDir, projectName)
+    const upResult = await composeUp(workspaceDir, projectName, (line) => {
+      log(`[docker] ${line}`)
+    })
     if (upResult.exitCode !== 0) {
-      log(`Docker Compose up failed:\n${upResult.stderr}`)
-      throw new Error(`Docker Compose up failed: ${upResult.stderr}`)
+      log("Docker Compose up failed.")
+      throw new Error(`Docker Compose up failed: ${upResult.stderr.slice(-500)}`)
     }
     log("Docker Compose stack started.")
 
@@ -97,30 +101,45 @@ export async function executeRun(
     }
     store.updateServices(runId, serviceInfos)
 
+    // --- Background health polling (updates services tab in real-time) ---
+    stopPolling = false
+    const pollHealth = async () => {
+      while (!stopPolling) {
+        try {
+          const ids = await getContainerIds(projectName)
+          let changed = false
+          for (const svc of serviceInfos) {
+            const cid = ids[svc.name] ?? svc.containerId
+            if (cid && cid !== svc.containerId) {
+              svc.containerId = cid
+              changed = true
+            }
+            if (cid) {
+              const health = await getServiceHealth(cid)
+              const mapped = health === "none" ? "healthy" : health
+              if (mapped !== svc.healthStatus) {
+                svc.healthStatus = mapped
+                changed = true
+              }
+            }
+          }
+          if (changed) store.updateServices(runId, serviceInfos)
+        } catch {}
+        await new Promise((r) => setTimeout(r, 3000))
+      }
+    }
+    const pollingPromise = pollHealth()
+
     // --- WAITING FOR HEALTH ---
     store.updateStatus(runId, "waiting_healthy")
     log("Waiting for services to become healthy...")
 
     const healthy = await waitForHealthy(projectName, 300_000)
     if (!healthy) {
-      // Update individual health statuses
-      for (const svc of serviceInfos) {
-        if (svc.containerId) {
-          const health = await getServiceHealth(svc.containerId)
-          svc.healthStatus = health === "none" ? "healthy" : health
-        }
-      }
-      store.updateServices(runId, serviceInfos)
-
       log("Some services failed health checks.")
       throw new Error("Services failed to become healthy within timeout")
     }
 
-    // Update health statuses to healthy
-    for (const svc of serviceInfos) {
-      svc.healthStatus = "healthy"
-    }
-    store.updateServices(runId, serviceInfos)
     log("All services are healthy.")
 
     // --- TESTING ---
@@ -128,6 +147,10 @@ export async function executeRun(
     log("Test runner starting...")
 
     const testResult = await waitForTestRunner(projectName, 600_000)
+
+    // Stop health polling
+    stopPolling = true
+    await pollingPromise.catch(() => {})
 
     // Save test logs
     const logsDir = getLogsDir(runId)
@@ -161,6 +184,7 @@ export async function executeRun(
       log("Run FAILED.")
     }
   } catch (err) {
+    stopPolling = true
     const message = err instanceof Error ? err.message : String(err)
     log(`Run error: ${message}`)
     store.updateError(runId, message)

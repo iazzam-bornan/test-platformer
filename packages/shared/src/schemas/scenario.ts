@@ -74,11 +74,15 @@ const infraServiceSchema = z.object({
 const testRunnerSchema = z.object({
   image: z.string().optional(),
   build: buildConfigSchema.optional(),
-  command: z.array(z.string()),
+  command: z.array(z.string()).optional(),
+  httpChecks: z.array(z.string()).optional(),
   env: z.record(z.string()).optional(),
   mountRepos: z.array(z.string()).optional(),
   dependsOn: z.array(z.string()).optional(),
-})
+}).refine(
+  (r) => r.command || (r.httpChecks && r.httpChecks.length > 0),
+  { message: "Test runner must have either 'command' or 'httpChecks'" }
+)
 
 const artifactsSchema = z.object({
   logs: z.boolean().default(true),

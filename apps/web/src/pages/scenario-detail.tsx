@@ -149,8 +149,11 @@ export function ScenarioDetailPage() {
         <StatCard label="Services" value={serviceCount} accent />
         <StatCard label="Infrastructure" value={infraCount} />
         <StatCard
-          label="Test Command"
-          value={scenario.config.tests.runner.command[0]}
+          label="Test"
+          value={
+            scenario.config.tests.runner.command?.[0] ??
+            `${scenario.config.tests.runner.httpChecks?.length ?? 0} checks`
+          }
         />
       </div>
 
@@ -272,12 +275,24 @@ export function ScenarioDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="rounded-md bg-muted/50 px-3 py-2">
-                  <p className="text-[10px] text-muted-foreground">Command</p>
-                  <p className="mt-0.5 font-mono text-xs">
-                    {scenario.config.tests.runner.command.join(" ")}
-                  </p>
-                </div>
+                {scenario.config.tests.runner.command && (
+                  <div className="rounded-md bg-muted/50 px-3 py-2">
+                    <p className="text-[10px] text-muted-foreground">Command</p>
+                    <p className="mt-0.5 font-mono text-xs">
+                      {scenario.config.tests.runner.command.join(" ")}
+                    </p>
+                  </div>
+                )}
+                {scenario.config.tests.runner.httpChecks && (
+                  <div className="rounded-md bg-muted/50 px-3 py-2">
+                    <p className="text-[10px] text-muted-foreground">HTTP Checks</p>
+                    <div className="mt-1 space-y-1">
+                      {scenario.config.tests.runner.httpChecks.map((url) => (
+                        <p key={url} className="font-mono text-xs">{url}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {scenario.config.tests.runner.image && (
                   <div className="rounded-md bg-muted/50 px-3 py-2">
                     <p className="text-[10px] text-muted-foreground">Image</p>

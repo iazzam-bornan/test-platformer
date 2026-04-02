@@ -36,6 +36,53 @@ function exec(
   })
 }
 
+function execStreaming(
+  command: string,
+  args: string[],
+  options?: { cwd?: string; timeout?: number },
+  onOutput?: (line: string) => void
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolve) => {
+    const proc = spawn(command, args, {
+      cwd: options?.cwd,
+      shell: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: options?.timeout,
+    })
+
+    let stdout = ""
+    let stderr = ""
+
+    proc.stdout.on("data", (data: Buffer) => {
+      const text = data.toString()
+      stdout += text
+      if (onOutput) {
+        for (const line of text.split("\n").filter(Boolean)) {
+          onOutput(line.trim())
+        }
+      }
+    })
+
+    proc.stderr.on("data", (data: Buffer) => {
+      const text = data.toString()
+      stderr += text
+      if (onOutput) {
+        for (const line of text.split("\n").filter(Boolean)) {
+          onOutput(line.trim())
+        }
+      }
+    })
+
+    proc.on("close", (code) => {
+      resolve({ stdout, stderr, exitCode: code ?? 1 })
+    })
+
+    proc.on("error", (err) => {
+      resolve({ stdout, stderr: err.message, exitCode: 1 })
+    })
+  })
+}
+
 export async function writeComposeFile(
   workspaceDir: string,
   composeYaml: string
@@ -47,12 +94,15 @@ export async function writeComposeFile(
 
 export async function composeUp(
   workspaceDir: string,
-  projectName: string
+  projectName: string,
+  onOutput?: (line: string) => void
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return exec("docker", ["compose", "-p", projectName, "up", "-d", "--build"], {
-    cwd: workspaceDir,
-    timeout: 600_000, // 10 minutes for builds
-  })
+  return execStreaming(
+    "docker",
+    ["compose", "-p", projectName, "up", "-d", "--build"],
+    { cwd: workspaceDir, timeout: 600_000 },
+    onOutput
+  )
 }
 
 export async function composeDown(
@@ -74,6 +124,7 @@ export async function getContainerIds(
     "-p",
     projectName,
     "ps",
+    "-a",
     "--format",
     "{{.Service}}={{.ID}}",
   ])

@@ -46,10 +46,21 @@ runRoutes.post("/", async (c) => {
   return c.json({ data: run }, 201)
 })
 
-runRoutes.post("/:id/cancel", (c) => {
+runRoutes.post("/:id/cancel", async (c) => {
   const run = store.getRun(c.req.param("id"))
   if (!run) return c.json({ error: "Run not found" }, 404)
   store.updateStatus(run.id, "cancelled")
+
+  // Tear down the Docker environment
+  const { composeDown } = await import("../docker/docker")
+  const { getWorkspacePath, destroyWorkspace } = await import("../workspace/manager")
+  const projectName = `tp-${run.id}`
+  const workspaceDir = getWorkspacePath(run.id)
+
+  composeDown(workspaceDir, projectName).then(() => {
+    destroyWorkspace(run.id).catch(() => {})
+  }).catch(() => {})
+
   return c.json({ data: { id: run.id, status: "cancelled" } })
 })
 
