@@ -1,0 +1,97 @@
+version: 1
+
+name: login-flow
+description: Fullstack login E2E with seeded postgres and redis
+tags:
+  - e2e
+  - auth
+
+repos:
+  frontend:
+    source: git
+    url: git@github.com:company/frontend.git
+    ref: main
+  backend:
+    source: git
+    url: git@github.com:company/backend.git
+    ref: main
+
+services:
+  frontend:
+    repo: frontend
+    build:
+      dockerfile: Dockerfile
+      context: .
+    workingDir: .
+    env:
+      VITE_API_URL: http://backend:3000
+    ports:
+      - containerPort: 5173
+        hostPort: auto
+    healthcheck:
+      type: http
+      path: /
+      port: 5173
+
+  backend:
+    repo: backend
+    build:
+      dockerfile: Dockerfile
+      context: .
+    workingDir: .
+    env:
+      DATABASE_URL: postgres://app:app@postgres:5432/app
+      REDIS_URL: redis://redis:6379
+    ports:
+      - containerPort: 3000
+        hostPort: auto
+    healthcheck:
+      type: http
+      path: /health
+      port: 3000
+
+infrastructure:
+  postgres:
+    image: myorg/test-postgres-auth:v3
+    env:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - containerPort: 5432
+        hostPort: auto
+    healthcheck:
+      type: command
+      command: ["pg_isready", "-U", "app", "-d", "app"]
+
+  redis:
+    image: redis:7
+    ports:
+      - containerPort: 6379
+        hostPort: auto
+    healthcheck:
+      type: command
+      command: ["redis-cli", "ping"]
+
+tests:
+  runner:
+    image: mcr.microsoft.com/playwright:v1.52.0-jammy
+    command: ["pnpm", "test:e2e"]
+    env:
+      BASE_URL: http://frontend:5173
+    mountRepos:
+      - frontend
+    dependsOn:
+      - frontend
+      - backend
+      - postgres
+      - redis
+
+artifacts:
+  logs: true
+  screenshots: true
+  videos: true
+
+cleanup:
+  destroyOnFinish: true
+  preserveOnFailure: true

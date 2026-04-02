@@ -1,0 +1,180 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useState, useEffect, useRef, useCallback } from "react"
+import type {
+  ScenarioListItem,
+  ScenarioDetail,
+  Artifact,
+} from "@workspace/shared/types/api"
+import type { Run, CreateRunRequest } from "@workspace/shared/types/run"
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000"
+
+export function useScenarios() {
+  return useQuery({
+    queryKey: ["scenarios"],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/scenarios`)
+      const data = await res.json()
+      return data.data as ScenarioListItem[]
+    },
+  })
+}
+
+export function useScenarioDetail(id: string) {
+  return useQuery({
+    queryKey: ["scenario", id],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/scenarios/${id}`)
+      if (!res.ok) throw new Error("Failed to load scenario")
+      const data = await res.json()
+      return data.data as ScenarioDetail
+    },
+    enabled: !!id,
+  })
+}
+
+export function useRuns() {
+  return useQuery({
+    queryKey: ["runs"],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/runs`)
+      const data = await res.json()
+      return data.data as Run[]
+    },
+  })
+}
+
+export function useRunDetail(id: string) {
+  return useQuery({
+    queryKey: ["run", id],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/runs/${id}`)
+      if (!res.ok) throw new Error("Failed to load run")
+      const data = await res.json()
+      return data.data as Run
+    },
+    enabled: !!id,
+    refetchInterval: (query) => {
+      const run = query.state.data as Run | undefined
+      if (!run) return 2000
+      const terminal = ["passed", "failed", "cancelled", "error"]
+      return terminal.includes(run.status) ? false : 2000
+    },
+  })
+}
+
+export function useCreateRun() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (req: CreateRunRequest) => {
+      const res = await fetch(`${API_URL}/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Failed to create run")
+      }
+      const data = await res.json()
+      return data.data as Run
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["runs"] })
+    },
+  })
+}
+
+export function useCancelRun() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (runId: string) => {
+      const res = await fetch(`${API_URL}/runs/${runId}/cancel`, {
+        method: "POST",
+      })
+      if (!res.ok) throw new Error("Failed to cancel run")
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["runs"] })
+    },
+  })
+}
+
+export function useCleanupRun() {
+  return useMutation({
+    mutationFn: async (runId: string) => {
+      const res = await fetch(`${API_URL}/runs/${runId}/cleanup`, {
+        method: "POST",
+      })
+      if (!res.ok) throw new Error("Failed to cleanup run")
+      return res.json()
+    },
+  })
+}
+
+export function useRunLogs(runId: string, enabled = true) {
+  const [logs, setLogs] = useState<string[]>([])
+  const [connected, setConnected] = useState(false)
+  const eventSourceRef = useRef<EventSource | null>(null)
+
+  const connect = useCallback(() => {
+    if (!enabled || !runId) return
+
+    const es = new EventSource(`${API_URL}/runs/${runId}/logs`)
+    eventSourceRef.current = es
+
+    es.addEventListener("log", (event) => {
+      setLogs((prev) => [...prev, event.data])
+    })
+
+    es.addEventListener("status", () => {
+      es.close()
+      setConnected(false)
+    })
+
+    es.onopen = () => setConnected(true)
+    es.onerror = () => {
+      setConnected(false)
+      es.close()
+    }
+  }, [runId, enabled])
+
+  useEffect(() => {
+    connect()
+    return () => {
+      eventSourceRef.current?.close()
+    }
+  }, [connect])
+
+  return { logs, connected }
+}
+
+export function useRunArtifacts(runId: string) {
+  return useQuery({
+    queryKey: ["artifacts", runId],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/runs/${runId}/artifacts`)
+      if (!res.ok) return []
+      const data = await res.json()
+      return data.data as Artifact[]
+    },
+    enabled: !!runId,
+  })
+}
+
+export function getArtifactUrl(runId: string, artifactPath: string) {
+  return `${API_URL}/runs/${runId}/artifacts/${artifactPath}`
+}
+
+export function useDockerStatus() {
+  return useQuery({
+    queryKey: ["docker-status"],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/docker/status`)
+      const data = await res.json()
+      return data as { available: boolean }
+    },
+    refetchInterval: 30000,
+  })
+}
