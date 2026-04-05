@@ -3,6 +3,7 @@ import { CodeBlock } from "../components/code-block"
 import {
   useRunDetail,
   useCancelRun,
+  useCreateRun,
   useRunLogs,
   useRunArtifacts,
   useCleanupRun,
@@ -13,7 +14,7 @@ import {
 import type { TestResult } from "../hooks/useApi"
 import { useEffect, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowLeft02Icon } from "@hugeicons/core-free-icons"
+import { ArrowLeft02Icon, PlayIcon } from "@hugeicons/core-free-icons"
 import { Button } from "@workspace/ui/components/button"
 import {
   Card,
@@ -126,13 +127,11 @@ function LogViewer({ logs, empty }: { logs: string[]; empty: string }) {
 function ServiceLogViewer({
   runId,
   service,
-  isRunning,
 }: {
   runId: string
   service: string
-  isRunning: boolean
 }) {
-  const { logs, connected } = useServiceLogs(runId, service, isRunning)
+  const { logs, connected } = useServiceLogs(runId, service)
 
   return (
     <div>
@@ -265,6 +264,7 @@ export function RunLivePage() {
   const navigate = useNavigate()
   const { data: run, isLoading, error } = useRunDetail(id)
   const cancelRun = useCancelRun()
+  const createRun = useCreateRun()
   const cleanupRun = useCleanupRun()
   const [selectedService, setSelectedService] = useState<string | null>(null)
 
@@ -277,13 +277,13 @@ export function RunLivePage() {
     run?.status === "testing" ||
     run?.status === "cleaning_up"
 
-  const { logs, connected } = useRunLogs(id, !!run && isRunning)
+  const { logs, connected } = useRunLogs(id)
   const { data: artifacts } = useRunArtifacts(id)
   const {
     results,
     logs: testRunnerLogs,
     summary,
-  } = useTestResults(id, !!run && isRunning)
+  } = useTestResults(id)
 
   if (error) {
     return (
@@ -359,6 +359,24 @@ export function RunLivePage() {
             <p className="font-mono text-xs text-muted-foreground">{run.id}</p>
           </div>
           <div className="flex gap-2">
+            {isTerminal && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={async () => {
+                  const result = await createRun.mutateAsync({
+                    scenarioId: run.scenarioId,
+                    overrides: run.overrides,
+                  })
+                  navigate({ to: `/runs/${result.id}` })
+                }}
+                disabled={createRun.isPending}
+              >
+                <HugeiconsIcon icon={PlayIcon} size={12} />
+                Re-run
+              </Button>
+            )}
             {isPreserved && (
               <Button
                 variant="outline"
@@ -497,7 +515,6 @@ export function RunLivePage() {
                 <ServiceLogViewer
                   runId={id}
                   service={selectedService}
-                  isRunning={isRunning}
                 />
               ) : (
                 <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">

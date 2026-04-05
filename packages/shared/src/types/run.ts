@@ -35,6 +35,7 @@ export interface Run {
   services: ServiceRunInfo[]
   exitCode?: number
   preserveOnFailure: boolean
+  preserveAlways: boolean
   error?: string
 }
 
@@ -43,6 +44,7 @@ export interface RunOverrides {
   env?: Record<string, Record<string, string>>
   images?: Record<string, string>
   preserveOnFailure?: boolean
+  preserveAlways?: boolean
 }
 
 export interface CreateRunRequest {

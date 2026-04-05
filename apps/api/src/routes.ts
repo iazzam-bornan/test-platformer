@@ -1,0 +1,396 @@
+import { Hono } from "hono"
+import { streamSSE } from "hono/streaming"
+import type { TestPlatform, RunState, RunConfig } from "@testplatform/core"
+import { loadScenarioById } from "./modules/scenarios/loader"
+import type { Run, ServiceRunInfo } from "@workspace/shared/types/run"
+import type { Artifact } from "@workspace/shared/types/api"
+
+// Map core RunState -> frontend Run shape
+function toFrontendRun(
+  state: RunState,
+  scenarioId?: string,
+  scenarioName?: string
+): Run {
+  return {
+    id: state.id,
+    scenarioId: scenarioId ?? (state as any).scenarioId ?? state.id,
+    scenarioName: scenarioName ?? (state as any).scenarioName ?? state.id,
+    status: state.status as Run["status"],
+    startedAt: state.startedAt,
+    finishedAt: state.finishedAt,
+    config: state.config as any,
+    overrides: (state as any).overrides,
+    services: state.services.map((s) => ({
+      name: s.name,
+      image: s.image,
+      containerId: s.containerId,
+      healthStatus: s.health,
+      mappedPorts: s.ports,
+    })),
+    exitCode: state.exitCode,
+    preserveOnFailure: state.config.cleanup?.onFail === "preserve",
+    preserveAlways:
+      state.config.cleanup?.onPass === "preserve" &&
+      state.config.cleanup?.onFail === "preserve",
+    error: state.error,
+  }
+}
+
+// Store scenario metadata alongside runs (the core doesn't know about scenarios)
+const runMeta = new Map<
+  string,
+  { scenarioId: string; scenarioName: string; overrides?: any }
+>()
+
+// Routes
+export function createRunRoutes(platform: TestPlatform): Hono {
+  const routes = new Hono()
+
+  // List all runs
+  routes.get("/", async (c) => {
+    const states = await platform.listRuns()
+    const runs = states.map((s) => {
+      const meta = runMeta.get(s.id)
+      return toFrontendRun(s, meta?.scenarioId, meta?.scenarioName)
+    })
+    return c.json({ data: runs })
+  })
+
+  // Get single run
+  routes.get("/:id", async (c) => {
+    const state = await platform.getRun(c.req.param("id"))
+    if (!state) return c.json({ error: "Run not found" }, 404)
+    const meta = runMeta.get(state.id)
+    return c.json({
+      data: toFrontendRun(state, meta?.scenarioId, meta?.scenarioName),
+    })
+  })
+
+  // Create run
+  routes.post("/", async (c) => {
+    const body = await c.req.json()
+    const { scenarioId, overrides } = body
+
+    if (!scenarioId) {
+      return c.json({ error: "scenarioId is required" }, 400)
+    }
+
+    const scenario = await loadScenarioById(scenarioId)
+    if (!scenario) {
+      return c.json({ error: `Scenario '${scenarioId}' not found` }, 404)
+    }
+
+    // Convert scenario YAML config + overrides -> RunConfig for the core
+    const config = scenarioToRunConfig(scenario.config, overrides)
+
+    const run = await platform.createRun(config)
+
+    // Store metadata the core doesn't care about
+    runMeta.set(run.id, {
+      scenarioId,
+      scenarioName: scenario.name,
+      overrides,
+    })
+
+    const state = run.getState()
+    return c.json(
+      { data: toFrontendRun(state, scenarioId, scenario.name) },
+      201
+    )
+  })
+
+  // Cancel run
+  routes.post("/:id/cancel", async (c) => {
+    const id = c.req.param("id")
+    await platform.cancelRun(id)
+    return c.json({ data: { id, status: "cancelled" } })
+  })
+
+  // Cleanup preserved run
+  routes.post("/:id/cleanup", async (c) => {
+    const id = c.req.param("id")
+    await platform.destroyRun(id)
+    return c.json({ data: { id, cleaned: true } })
+  })
+
+  // SSE: orchestrator logs (live or historical)
+  routes.get("/:id/logs", async (c) => {
+    const id = c.req.param("id")
+    const state = await platform.getRun(id)
+    if (!state) return c.json({ error: "Run not found" }, 404)
+
+    return streamSSE(c, async (stream) => {
+      // Send existing logs
+      for (const line of state.logs) {
+        await stream.writeSSE({ data: line, event: "log" })
+      }
+
+      const isTerminal = (s: string) =>
+        ["passed", "failed", "cancelled", "error"].includes(s)
+
+      if (isTerminal(state.status)) {
+        await stream.writeSSE({ data: state.status, event: "status" })
+        return
+      }
+
+      // Live: subscribe to new logs
+      const handler = (runId: string, line: string) => {
+        if (runId === id) {
+          stream.writeSSE({ data: line, event: "log" }).catch(() => {})
+        }
+      }
+      platform.on("log", handler)
+
+      while (true) {
+        const current = await platform.getRun(id)
+        if (!current || isTerminal(current.status)) {
+          await stream.writeSSE({
+            data: current?.status ?? "unknown",
+            event: "status",
+          })
+          break
+        }
+        await stream.sleep(1000)
+      }
+
+      platform.off("log", handler)
+    })
+  })
+
+  // SSE: per-service Docker logs (live or historical)
+  routes.get("/:id/logs/service/:service", async (c) => {
+    const id = c.req.param("id")
+    const service = c.req.param("service")
+    const state = await platform.getRun(id)
+    if (!state) return c.json({ error: "Run not found" }, 404)
+
+    const isTerminal = (s: string) =>
+      ["passed", "failed", "cancelled", "error"].includes(s)
+
+    // Historical: serve from stored service logs
+    if (isTerminal(state.status) && state.serviceLogs[service]) {
+      return streamSSE(c, async (stream) => {
+        for (const line of state.serviceLogs[service].split("\n")) {
+          if (line.trim()) {
+            await stream.writeSSE({ data: line, event: "log" })
+          }
+        }
+        await stream.writeSSE({ data: state.status, event: "status" })
+      })
+    }
+
+    // Live: stream from Docker
+    const { getContainerIds, streamContainerLogs } =
+      await import("@testplatform/core/docker")
+
+    return streamSSE(c, async (stream) => {
+      let containerId = ""
+      const projectName = `tp-${id}`
+      for (let i = 0; i < 10; i++) {
+        const ids = await getContainerIds(projectName)
+        if (ids[service]) {
+          containerId = ids[service]
+          break
+        }
+        await stream.sleep(2000)
+      }
+
+      if (!containerId) {
+        await stream.writeSSE({
+          data: `Container '${service}' not found`,
+          event: "error",
+        })
+        return
+      }
+
+      const stop = streamContainerLogs(
+        containerId,
+        (line: string) =>
+          stream.writeSSE({ data: line, event: "log" }).catch(() => stop()),
+        (line: string) =>
+          stream.writeSSE({ data: line, event: "log" }).catch(() => stop())
+      )
+
+      while (true) {
+        const current = await platform.getRun(id)
+        if (!current || isTerminal(current.status)) {
+          stop()
+          await stream.writeSSE({
+            data: current?.status ?? "unknown",
+            event: "status",
+          })
+          break
+        }
+        await stream.sleep(1000)
+      }
+    })
+  })
+
+  // SSE: test results (live or historical)
+  routes.get("/:id/results", async (c) => {
+    const id = c.req.param("id")
+    const state = await platform.getRun(id)
+    if (!state) return c.json({ error: "Run not found" }, 404)
+
+    const isTerminal = (s: string) =>
+      ["passed", "failed", "cancelled", "error"].includes(s)
+
+    // Historical
+    if (isTerminal(state.status) && state.testResults.length > 0) {
+      return streamSSE(c, async (stream) => {
+        for (const result of state.testResults) {
+          await stream.writeSSE({
+            data: JSON.stringify(result),
+            event: "result",
+          })
+        }
+        await stream.writeSSE({ data: state.status, event: "status" })
+      })
+    }
+
+    // Live: subscribe to result events
+    return streamSSE(c, async (stream) => {
+      const handler = (runId: string, result: any) => {
+        if (runId === id) {
+          stream
+            .writeSSE({ data: JSON.stringify(result), event: "result" })
+            .catch(() => {})
+        }
+      }
+      const logHandler = (runId: string, line: string) => {
+        if (runId === id && line.includes("[test]")) {
+          stream.writeSSE({ data: line, event: "log" }).catch(() => {})
+        }
+      }
+
+      platform.on("result", handler)
+      platform.on("log", logHandler)
+
+      while (true) {
+        const current = await platform.getRun(id)
+        if (!current || isTerminal(current.status)) {
+          await stream.writeSSE({
+            data: current?.status ?? "unknown",
+            event: "status",
+          })
+          break
+        }
+        await stream.sleep(1000)
+      }
+
+      platform.off("result", handler)
+      platform.off("log", logHandler)
+    })
+  })
+
+  // Get collected service log files
+  routes.get("/:id/logs/files", async (c) => {
+    const id = c.req.param("id")
+    const state = await platform.getRun(id)
+    if (!state) return c.json({ error: "Run not found" }, 404)
+    return c.json({ data: state.serviceLogs })
+  })
+
+  // List artifacts (from service logs as files for now)
+  routes.get("/:id/artifacts", async (c) => {
+    const id = c.req.param("id")
+    const state = await platform.getRun(id)
+    if (!state) return c.json({ error: "Run not found" }, 404)
+
+    const artifacts: Artifact[] = Object.keys(state.serviceLogs).map((svc) => ({
+      id: `${id}-${svc}`,
+      runId: id,
+      type: "log" as const,
+      name: `${svc}.log`,
+      path: `${svc}.log`,
+      createdAt: state.finishedAt ?? state.startedAt,
+    }))
+
+    return c.json({ data: artifacts })
+  })
+
+  // Download artifact
+  routes.get("/:id/artifacts/:name", async (c) => {
+    const id = c.req.param("id")
+    const name = c.req.param("name")
+    const state = await platform.getRun(id)
+    if (!state) return c.json({ error: "Run not found" }, 404)
+
+    const svcName = name.replace(".log", "")
+    const content = state.serviceLogs[svcName]
+    if (!content) return c.json({ error: "Artifact not found" }, 404)
+
+    c.header("Content-Type", "text/plain")
+    return c.body(content)
+  })
+
+  return routes
+}
+
+// Convert YAML scenario config -> core RunConfig
+function scenarioToRunConfig(scenario: any, overrides?: any): RunConfig {
+  const config: RunConfig = {
+    services: {},
+    infra: {},
+    test: { httpChecks: ["http://localhost"] }, // placeholder, overridden below
+    cleanup: {
+      onPass: overrides?.preserveAlways ? "preserve" : "destroy",
+      onFail:
+        overrides?.preserveAlways || overrides?.preserveOnFailure
+          ? "preserve"
+          : "destroy",
+    },
+  }
+
+  // Services
+  for (const [name, svc] of Object.entries(scenario.services ?? {})) {
+    const s = svc as any
+    const imageOverride = overrides?.images?.[name]
+    config.services[name] = {
+      image: imageOverride ?? s.image ?? `build:${name}`,
+      env: { ...s.env, ...overrides?.env?.[name] },
+      ports: s.ports?.map((p: any) => ({
+        container: p.containerPort,
+        host: typeof p.hostPort === "number" ? p.hostPort : undefined,
+      })),
+      healthcheck: s.healthcheck,
+      dependsOn: s.dependsOn,
+    }
+  }
+
+  // Infrastructure
+  for (const [name, infra] of Object.entries(scenario.infrastructure ?? {})) {
+    const i = infra as any
+    const imageOverride = overrides?.images?.[name]
+    config.infra![name] = {
+      image: imageOverride ?? i.image,
+      env: { ...i.env, ...overrides?.env?.[name] },
+      ports: i.ports?.map((p: any) => ({
+        container: p.containerPort,
+        host: typeof p.hostPort === "number" ? p.hostPort : undefined,
+      })),
+      healthcheck: i.healthcheck,
+      volumes: i.volumes,
+    }
+  }
+
+  // Test
+  const runner = scenario.tests?.runner
+  if (runner) {
+    if (runner.httpChecks) {
+      config.test = {
+        httpChecks: runner.httpChecks,
+        iterations: 10,
+        delayMs: 1000,
+      }
+    } else if (runner.command) {
+      config.test = {
+        image: runner.image ?? "node:20-slim",
+        command: runner.command,
+        env: runner.env,
+      }
+    }
+  }
+
+  return config
+}

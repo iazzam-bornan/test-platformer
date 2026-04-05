@@ -41,6 +41,13 @@ export function useRuns() {
       const data = await res.json()
       return data.data as Run[]
     },
+    refetchInterval: (query) => {
+      const runs = query.state.data as Run[] | undefined
+      if (!runs) return 3000
+      const terminal = ["passed", "failed", "cancelled", "error"]
+      const hasActive = runs.some((r) => !terminal.includes(r.status))
+      return hasActive ? 3000 : false
+    },
   })
 }
 
@@ -113,14 +120,15 @@ export function useCleanupRun() {
   })
 }
 
-export function useRunLogs(runId: string, enabled = true) {
+export function useRunLogs(runId: string) {
   const [logs, setLogs] = useState<string[]>([])
   const [connected, setConnected] = useState(false)
   const eventSourceRef = useRef<EventSource | null>(null)
 
-  const connect = useCallback(() => {
-    if (!enabled || !runId) return
+  useEffect(() => {
+    if (!runId) return
 
+    setLogs([])
     const es = new EventSource(`${API_URL}/runs/${runId}/logs`)
     eventSourceRef.current = es
 
@@ -138,14 +146,11 @@ export function useRunLogs(runId: string, enabled = true) {
       setConnected(false)
       es.close()
     }
-  }, [runId, enabled])
 
-  useEffect(() => {
-    connect()
     return () => {
-      eventSourceRef.current?.close()
+      es.close()
     }
-  }, [connect])
+  }, [runId])
 
   return { logs, connected }
 }
@@ -196,18 +201,17 @@ export interface TestResult {
   passRate?: number
 }
 
-export function useServiceLogs(runId: string, service: string, enabled = true) {
+export function useServiceLogs(runId: string, service: string) {
   const [logs, setLogs] = useState<string[]>([])
   const [connected, setConnected] = useState(false)
-  const eventSourceRef = useRef<EventSource | null>(null)
 
-  const connect = useCallback(() => {
-    if (!enabled || !runId || !service) return
+  useEffect(() => {
+    if (!runId || !service) return
 
+    setLogs([])
     const es = new EventSource(
       `${API_URL}/runs/${runId}/logs/service/${service}`
     )
-    eventSourceRef.current = es
 
     es.addEventListener("log", (event) => {
       setLogs((prev) => [...prev, event.data])
@@ -228,31 +232,29 @@ export function useServiceLogs(runId: string, service: string, enabled = true) {
       setConnected(false)
       es.close()
     }
-  }, [runId, service, enabled])
 
-  useEffect(() => {
-    setLogs([])
-    connect()
     return () => {
-      eventSourceRef.current?.close()
+      es.close()
     }
-  }, [connect])
+  }, [runId, service])
 
   return { logs, connected }
 }
 
-export function useTestResults(runId: string, enabled = true) {
+export function useTestResults(runId: string) {
   const [results, setResults] = useState<TestResult[]>([])
   const [logs, setLogs] = useState<string[]>([])
   const [summary, setSummary] = useState<TestResult | null>(null)
   const [connected, setConnected] = useState(false)
-  const eventSourceRef = useRef<EventSource | null>(null)
 
-  const connect = useCallback(() => {
-    if (!enabled || !runId) return
+  useEffect(() => {
+    if (!runId) return
+
+    setResults([])
+    setLogs([])
+    setSummary(null)
 
     const es = new EventSource(`${API_URL}/runs/${runId}/results`)
-    eventSourceRef.current = es
 
     es.addEventListener("result", (event) => {
       try {
@@ -279,14 +281,11 @@ export function useTestResults(runId: string, enabled = true) {
       setConnected(false)
       es.close()
     }
-  }, [runId, enabled])
 
-  useEffect(() => {
-    connect()
     return () => {
-      eventSourceRef.current?.close()
+      es.close()
     }
-  }, [connect])
+  }, [runId])
 
   return { results, logs, summary, connected }
 }

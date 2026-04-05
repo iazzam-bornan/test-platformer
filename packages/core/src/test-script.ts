@@ -1,23 +1,15 @@
-import fs from "fs/promises"
-import path from "path"
-
 /**
- * Generates a Node.js test script that:
- * - Runs each HTTP check N times with a delay between each
- * - Writes human-readable logs to stdout
- * - Writes structured JSON results to stderr prefixed with @@RESULT@@
- * - Exits 0 if all pass, 1 if any fail
+ * Generates a Node.js test script for HTTP checks.
+ * stdout = human-readable logs
+ * stderr = structured JSON results prefixed with @@RESULT@@
  */
-export async function writeTestScript(
-  workspaceDir: string,
-  httpChecks: string[],
-  iterations = 10,
-  delayMs = 1000
-): Promise<string> {
-  const scriptPath = path.join(workspaceDir, "test-script.mjs")
-
-  const script = `
-const urls = ${JSON.stringify(httpChecks)};
+export function generateTestScript(
+  urls: string[],
+  iterations: number,
+  delayMs: number
+): string {
+  return `
+const urls = ${JSON.stringify(urls)};
 const iterations = ${iterations};
 const delayMs = ${delayMs};
 
@@ -102,8 +94,5 @@ async function run() {
 }
 
 run();
-`
-
-  await fs.writeFile(scriptPath, script.trim(), "utf-8")
-  return scriptPath
+`.trim()
 }

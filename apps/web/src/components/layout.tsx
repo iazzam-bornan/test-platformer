@@ -10,7 +10,7 @@ import {
   SidebarTrigger,
 } from "@workspace/ui/components/sidebar"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { GridViewIcon, Clock01Icon } from "@hugeicons/core-free-icons"
+import { GridViewIcon, Clock01Icon, Activity01Icon } from "@hugeicons/core-free-icons"
 import { useDockerStatus } from "../hooks/useApi"
 
 function NavLink({
@@ -27,7 +27,9 @@ function NavLink({
   const isActive =
     to === "/"
       ? currentPath === "/" || currentPath.startsWith("/scenarios")
-      : currentPath.startsWith(to)
+      : to === "/history"
+        ? currentPath === "/history" || currentPath.startsWith("/runs")
+        : currentPath.startsWith(to)
 
   return (
     <SidebarMenuItem>
@@ -90,6 +92,11 @@ export function RootLayout() {
                 to="/"
                 label="Scenarios"
                 icon={<HugeiconsIcon icon={GridViewIcon} size={12} />}
+              />
+              <NavLink
+                to="/active"
+                label="Active"
+                icon={<HugeiconsIcon icon={Activity01Icon} size={12} />}
               />
               <NavLink
                 to="/history"

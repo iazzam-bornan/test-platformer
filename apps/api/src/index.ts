@@ -1,11 +1,9 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
+import { platform } from "./platform"
 import { scenarioRoutes } from "./modules/scenarios/routes"
-import { runRoutes } from "./modules/runs/routes"
-import { artifactRoutes } from "./modules/artifacts/routes"
-import { isDockerAvailable } from "./modules/docker/docker"
-import { ensureWorkspaceRoot } from "./modules/workspace/manager"
+import { createRunRoutes } from "./routes"
 
 const app = new Hono()
 
@@ -13,7 +11,7 @@ app.use("*", logger())
 app.use("*", cors())
 
 app.get("/health", async (c) => {
-  const dockerOk = await isDockerAvailable()
+  const dockerOk = await platform.checkDocker()
   return c.json({
     status: "ok",
     docker: dockerOk ? "available" : "unavailable",
@@ -21,18 +19,14 @@ app.get("/health", async (c) => {
 })
 
 app.get("/docker/status", async (c) => {
-  const dockerOk = await isDockerAvailable()
+  const dockerOk = await platform.checkDocker()
   return c.json({ available: dockerOk })
 })
 
 app.route("/scenarios", scenarioRoutes)
-app.route("/runs", runRoutes)
-app.route("/runs", artifactRoutes)
+app.route("/runs", createRunRoutes(platform))
 
 const port = Number(process.env.PORT) || 4000
-
-// Ensure workspace root exists on startup
-await ensureWorkspaceRoot()
 
 console.log(`API server starting on port ${port}`)
 

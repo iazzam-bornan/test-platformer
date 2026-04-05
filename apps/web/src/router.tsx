@@ -4,6 +4,7 @@ import { ScenarioDetailPage } from "./pages/scenario-detail.tsx"
 import { RunConfigurationPage } from "./pages/run-configuration.tsx"
 import { RunLivePage } from "./pages/run-live.tsx"
 import { RunHistoryPage } from "./pages/run-history.tsx"
+import { ActiveRunsPage } from "./pages/active-runs.tsx"
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router"
 
 const rootRoute = createRootRoute({
@@ -40,12 +41,19 @@ const runHistoryRoute = createRoute({
   component: RunHistoryPage,
 })
 
+const activeRunsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/active",
+  component: ActiveRunsPage,
+})
+
 const routeTree = rootRoute.addChildren([
   scenariosRoute,
   scenarioDetailRoute,
   runConfigRoute,
   runLiveRoute,
   runHistoryRoute,
+  activeRunsRoute,
 ])
 
 export const router = createRouter({ routeTree })

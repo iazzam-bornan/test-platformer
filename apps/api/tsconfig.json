@@ -7,10 +7,12 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
-    "baseUrl": ".",
+    "types": ["bun", "node"],
     "paths": {
       "@/*": ["./src/*"],
-      "@workspace/shared/*": ["../../packages/shared/src/*"]
+      "@workspace/shared/*": ["../../packages/shared/src/*"],
+      "@testplatform/core": ["../../packages/core/src/index.ts"],
+      "@testplatform/core/*": ["../../packages/core/src/*"]
     }
   },
   "include": ["."],
