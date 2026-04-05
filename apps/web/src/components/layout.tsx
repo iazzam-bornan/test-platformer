@@ -9,7 +9,6 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@workspace/ui/components/sidebar"
-import { Separator } from "@workspace/ui/components/separator"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { GridViewIcon, Clock01Icon } from "@hugeicons/core-free-icons"
 import { useDockerStatus } from "../hooks/useApi"
@@ -35,11 +34,11 @@ function NavLink({
       <Link to={to} className="block w-full">
         <div
           className={`
-            group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all
+            group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all
             ${
               isActive
                 ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                : "text-muted-foreground hover:text-foreground"
             }
           `}
         >
@@ -47,7 +46,7 @@ function NavLink({
             className={`flex h-6 w-6 items-center justify-center rounded text-xs ${
               isActive
                 ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground group-hover:bg-accent-foreground/10"
+                : "text-muted-foreground group-hover:text-foreground"
             }`}
           >
             {icon}
@@ -68,7 +67,7 @@ export function RootLayout() {
   return (
     <SidebarProvider>
       <div className="flex h-screen w-full bg-background">
-        <Sidebar className="border-r border-sidebar-border">
+        <Sidebar className="border-r-0">
           <SidebarHeader>
             <div className="flex items-center gap-3 px-4 py-4">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary font-heading text-sm font-bold text-primary-foreground shadow-sm">
@@ -84,8 +83,6 @@ export function RootLayout() {
               </div>
             </div>
           </SidebarHeader>
-
-          <Separator className="mx-4 w-auto" />
 
           <SidebarContent className="px-2 pt-4">
             <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -106,7 +103,7 @@ export function RootLayout() {
           </SidebarContent>
 
           <SidebarFooter>
-            <div className="border-t border-sidebar-border px-4 py-3">
+            <div className="px-4 py-3">
               <div className="flex items-center gap-2.5">
                 <div className="relative flex h-2 w-2">
                   <span
@@ -131,13 +128,13 @@ export function RootLayout() {
           </SidebarFooter>
         </Sidebar>
 
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex h-12 items-center border-b px-4 md:hidden">
+        <div className="flex flex-1 flex-col overflow-hidden py-2 pr-2">
+          <div className="flex h-12 items-center px-4 md:hidden">
             <SidebarTrigger />
           </div>
 
-          <main className="flex-1 overflow-auto">
-            <div className="mx-auto max-w-6xl px-6 py-8 lg:px-8">
+          <main className="flex-1 overflow-auto rounded-xl bg-panel">
+            <div className="px-8 py-8">
               <Outlet />
             </div>
           </main>

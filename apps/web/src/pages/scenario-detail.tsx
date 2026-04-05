@@ -1,5 +1,6 @@
 import { useParams, Link, useNavigate } from "@tanstack/react-router"
 import { useScenarioDetail } from "../hooks/useApi"
+import { CodeBlock } from "../components/code-block"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft02Icon, PlayIcon } from "@hugeicons/core-free-icons"
 import { Button } from "@workspace/ui/components/button"
@@ -333,11 +334,9 @@ export function ScenarioDetailPage() {
         </TabsContent>
 
         <TabsContent value="yaml" className="mt-4">
-          <Card>
+          <Card className="py-0">
             <CardContent className="p-0">
-              <pre className="max-h-[600px] overflow-auto rounded-lg p-5 font-mono text-xs leading-relaxed text-foreground/80">
-                <code>{yamlContent}</code>
-              </pre>
+              <CodeBlock code={yamlContent} lang="yaml" />
             </CardContent>
           </Card>
         </TabsContent>

@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from "@tanstack/react-router"
+import { CodeBlock } from "../components/code-block"
 import {
   useRunDetail,
   useCancelRun,
@@ -617,9 +618,11 @@ export function RunLivePage() {
                 <CardTitle className="text-sm">Overrides</CardTitle>
               </CardHeader>
               <CardContent>
-                <pre className="max-h-[200px] overflow-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed">
-                  {JSON.stringify(run.overrides, null, 2)}
-                </pre>
+                <CodeBlock
+                  code={JSON.stringify(run.overrides, null, 2)}
+                  lang="json"
+                  maxHeight="200px"
+                />
               </CardContent>
             </Card>
           )}
@@ -631,9 +634,11 @@ export function RunLivePage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <pre className="max-h-[400px] overflow-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed">
-                {JSON.stringify(run.config, null, 2)}
-              </pre>
+              <CodeBlock
+                code={JSON.stringify(run.config, null, 2)}
+                lang="json"
+                maxHeight="400px"
+              />
             </CardContent>
           </Card>
         </TabsContent>

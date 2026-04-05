@@ -51,7 +51,7 @@ export function RunConfigurationPage() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-2xl space-y-6">
+      <div className="max-w-2xl space-y-6">
         <Skeleton className="h-6 w-40" />
         <Skeleton className="h-48" />
         <Skeleton className="h-48" />
@@ -75,7 +75,7 @@ export function RunConfigurationPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <div className="max-w-2xl space-y-8">
       <div>
         <Button
           variant="ghost"
