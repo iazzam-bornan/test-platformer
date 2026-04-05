@@ -146,6 +146,28 @@ function ServiceLogViewer({
   )
 }
 
+function MetricCard({
+  label,
+  value,
+  unit,
+}: {
+  label: string
+  value: string | number
+  unit?: string
+}) {
+  return (
+    <div className="rounded-lg border p-3 text-center">
+      <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
+        {label}
+      </p>
+      <p className="mt-1 font-mono text-sm font-bold tabular-nums">
+        {value}
+        {unit && <span className="ml-0.5 text-[10px] font-normal text-muted-foreground">{unit}</span>}
+      </p>
+    </div>
+  )
+}
+
 function ResultsView({
   results,
   summary,
@@ -157,13 +179,18 @@ function ResultsView({
   const passed = summary?.passed ?? results.filter((r) => r.ok).length
   const failed = summary?.failed ?? results.filter((r) => !r.ok).length
 
-  // Group by URL
-  const urlGroups = new Map<string, TestResult[]>()
+  // Detect if this is a JMeter test (results have label field)
+  const isJmeter = results.some((r) => r.label !== undefined)
+
+  // Group by label (JMeter) or URL (HTTP checks)
+  const groupKey = isJmeter ? "label" : "url"
+  const groups = new Map<string, TestResult[]>()
   for (const r of results) {
-    if (!r.url) continue
-    const group = urlGroups.get(r.url) ?? []
+    const key = r[groupKey]
+    if (!key) continue
+    const group = groups.get(key) ?? []
     group.push(r)
-    urlGroups.set(r.url, group)
+    groups.set(key, group)
   }
 
   return (
@@ -172,7 +199,7 @@ function ResultsView({
       <div className="space-y-2">
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">
-            {results.length} / {total || "?"} checks
+            {results.length} / {total || "?"} {isJmeter ? "samples" : "checks"}
           </span>
           <span className="font-mono">
             <span className="text-emerald-400">{passed} passed</span>
@@ -189,27 +216,49 @@ function ResultsView({
         </div>
       </div>
 
-      {/* Per-URL breakdown */}
-      {[...urlGroups.entries()].map(([url, checks]) => {
-        const urlPassed = checks.filter((c) => c.ok).length
-        const urlFailed = checks.filter((c) => !c.ok).length
+      {/* JMeter performance metrics */}
+      {isJmeter && summary && summary.avgDuration !== undefined && (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          <MetricCard label="Avg" value={summary.avgDuration} unit="ms" />
+          <MetricCard label="Min" value={summary.minDuration ?? 0} unit="ms" />
+          <MetricCard label="Max" value={summary.maxDuration ?? 0} unit="ms" />
+          <MetricCard label="P90" value={summary.p90Duration ?? 0} unit="ms" />
+          <MetricCard label="P95" value={summary.p95Duration ?? 0} unit="ms" />
+          <MetricCard label="Error Rate" value={`${summary.errorRate ?? 0}%`} />
+        </div>
+      )}
+
+      {/* Per-label/URL breakdown */}
+      {[...groups.entries()].map(([key, checks]) => {
+        const groupPassed = checks.filter((c) => c.ok).length
+        const groupFailed = checks.filter((c) => !c.ok).length
         const avgDuration = Math.round(
           checks.reduce((s, c) => s + (c.duration ?? 0), 0) / checks.length
         )
+        const avgLatency = isJmeter
+          ? Math.round(
+              checks.reduce((s, c) => s + (c.latency ?? 0), 0) / checks.length
+            )
+          : null
 
         return (
-          <div key={url} className="rounded-lg border">
+          <div key={key} className="rounded-lg border">
             <div className="flex items-center justify-between border-b px-4 py-2.5">
               <span className="truncate font-mono text-xs font-semibold">
-                {url}
+                {key}
               </span>
               <div className="ml-4 flex shrink-0 items-center gap-3 text-[10px]">
                 <span className="text-muted-foreground">
                   avg {avgDuration}ms
                 </span>
-                <span className="text-emerald-400">{urlPassed}</span>
-                {urlFailed > 0 && (
-                  <span className="text-red-400">{urlFailed}</span>
+                {avgLatency !== null && (
+                  <span className="text-muted-foreground">
+                    lat {avgLatency}ms
+                  </span>
+                )}
+                <span className="text-emerald-400">{groupPassed}</span>
+                {groupFailed > 0 && (
+                  <span className="text-red-400">{groupFailed}</span>
                 )}
               </div>
             </div>
@@ -217,14 +266,18 @@ function ResultsView({
               {checks.map((check, i) => (
                 <div
                   key={i}
-                  title={`#${check.iteration} — ${check.status} — ${check.duration}ms${check.error ? ` — ${check.error}` : ""}`}
+                  title={
+                    isJmeter
+                      ? `${check.responseCode ?? check.status} — ${check.duration}ms — lat ${check.latency ?? 0}ms — ${check.threadName ?? ""}${check.error ? ` — ${check.error}` : ""}`
+                      : `#${check.iteration} — ${check.status} — ${check.duration}ms${check.error ? ` — ${check.error}` : ""}`
+                  }
                   className={`flex h-6 w-6 items-center justify-center rounded font-mono text-[9px] font-bold transition-all ${
                     check.ok
                       ? "bg-emerald-400/15 text-emerald-400"
                       : "bg-red-400/15 text-red-400"
                   }`}
                 >
-                  {check.iteration}
+                  {isJmeter ? check.responseCode ?? "?" : check.iteration}
                 </div>
               ))}
             </div>
@@ -251,7 +304,7 @@ function ResultsView({
             {summary.passRate}%
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {summary.passed}/{summary.totalChecks} checks passed
+            {summary.passed}/{summary.totalChecks} {isJmeter ? "requests" : "checks"} passed
           </p>
         </div>
       )}

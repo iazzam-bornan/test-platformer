@@ -1,0 +1,34 @@
+version: 1
+
+name: jmeter-load-test
+description: JMeter load test against an external API — no local services or infrastructure
+tags:
+  - load-test
+  - jmeter
+  - external
+
+repos: {}
+
+services: {}
+
+infrastructure: {}
+
+tests:
+  runner:
+    jmeter:
+      testPlan: ./jmeter-load-test/test-plan.jmx
+      threads: 10
+      rampUp: 5
+      loops: 3
+      errorThreshold: 10
+      properties:
+        TARGET_HOST: jsonplaceholder.typicode.com
+        TARGET_PORT: "443"
+        TARGET_PROTOCOL: https
+
+artifacts:
+  logs: true
+
+cleanup:
+  destroyOnFinish: true
+  preserveOnFailure: false

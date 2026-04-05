@@ -199,6 +199,23 @@ export interface TestResult {
   passed?: number
   failed?: number
   passRate?: number
+  // jmeter fields
+  label?: string
+  responseCode?: string
+  responseMessage?: string
+  threadName?: string
+  bytes?: number
+  sentBytes?: number
+  connectTime?: number
+  latency?: number
+  // jmeter summary fields
+  errorRate?: number
+  avgDuration?: number
+  minDuration?: number
+  maxDuration?: number
+  p90Duration?: number
+  p95Duration?: number
+  throughput?: number
 }
 
 export function useServiceLogs(runId: string, service: string) {

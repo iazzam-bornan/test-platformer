@@ -1,7 +1,8 @@
 import { Hono } from "hono"
 import { streamSSE } from "hono/streaming"
+import path from "path"
 import type { TestPlatform, RunState, RunConfig } from "@testplatform/core"
-import { loadScenarioById } from "./modules/scenarios/loader"
+import { loadScenarioById, getScenariosDir } from "./modules/scenarios/loader"
 import type { Run, ServiceRunInfo } from "@workspace/shared/types/run"
 import type { Artifact } from "@workspace/shared/types/api"
 
@@ -81,7 +82,7 @@ export function createRunRoutes(platform: TestPlatform): Hono {
     }
 
     // Convert scenario YAML config + overrides -> RunConfig for the core
-    const config = scenarioToRunConfig(scenario.config, overrides)
+    const config = scenarioToRunConfig(scenario.config, overrides, getScenariosDir())
 
     const run = await platform.createRun(config)
 
@@ -327,8 +328,21 @@ export function createRunRoutes(platform: TestPlatform): Hono {
   return routes
 }
 
+// Resolve relative volume paths (e.g. "./jmeter-load-test/file:/container:ro")
+// against the scenarios directory so Docker can find them
+function resolveVolumes(volumes: string[] | undefined, scenariosDir: string): string[] | undefined {
+  if (!volumes) return undefined
+  return volumes.map((v) => {
+    const [hostPart, ...rest] = v.split(":")
+    if (hostPart.startsWith("./") || hostPart.startsWith("../")) {
+      return [path.resolve(scenariosDir, hostPart), ...rest].join(":")
+    }
+    return v
+  })
+}
+
 // Convert YAML scenario config -> core RunConfig
-function scenarioToRunConfig(scenario: any, overrides?: any): RunConfig {
+function scenarioToRunConfig(scenario: any, overrides?: any, scenariosDir?: string): RunConfig {
   const config: RunConfig = {
     services: {},
     infra: {},
@@ -370,7 +384,7 @@ function scenarioToRunConfig(scenario: any, overrides?: any): RunConfig {
         host: typeof p.hostPort === "number" ? p.hostPort : undefined,
       })),
       healthcheck: i.healthcheck,
-      volumes: i.volumes,
+      volumes: resolveVolumes(i.volumes, scenariosDir ?? ""),
     }
   }
 
@@ -383,11 +397,30 @@ function scenarioToRunConfig(scenario: any, overrides?: any): RunConfig {
         iterations: 10,
         delayMs: 1000,
       }
+    } else if (runner.jmeter) {
+      const testPlanPath = runner.jmeter.testPlan.startsWith("./") || runner.jmeter.testPlan.startsWith("../")
+        ? path.resolve(scenariosDir ?? "", runner.jmeter.testPlan)
+        : runner.jmeter.testPlan
+
+      config.test = {
+        jmeter: {
+          testPlan: testPlanPath,
+          image: runner.jmeter.image,
+          threads: runner.jmeter.threads,
+          rampUp: runner.jmeter.rampUp,
+          loops: runner.jmeter.loops,
+          duration: runner.jmeter.duration,
+          errorThreshold: runner.jmeter.errorThreshold,
+          properties: runner.jmeter.properties,
+        },
+      }
     } else if (runner.command) {
       config.test = {
         image: runner.image ?? "node:20-slim",
+        entrypoint: runner.entrypoint,
         command: runner.command,
         env: runner.env,
+        volumes: resolveVolumes(runner.volumes, scenariosDir ?? ""),
       }
     }
   }

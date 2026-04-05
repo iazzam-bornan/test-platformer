@@ -21,6 +21,10 @@ const SCENARIOS_DIR = (() => {
 
 console.log(`[scenarios] Loading from: ${SCENARIOS_DIR}`)
 
+export function getScenariosDir(): string {
+  return SCENARIOS_DIR
+}
+
 export async function loadScenarios(): Promise<ScenarioListItem[]> {
   const files = await fs.readdir(SCENARIOS_DIR).catch((err) => {
     console.error(`[scenarios] Failed to read ${SCENARIOS_DIR}:`, err.message)

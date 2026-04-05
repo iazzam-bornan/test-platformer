@@ -71,17 +71,31 @@ const infraServiceSchema = z.object({
   volumes: z.array(z.string()).optional(),
 })
 
+const jmeterConfigSchema = z.object({
+  testPlan: z.string(),
+  image: z.string().optional(),
+  threads: z.number().min(1).optional(),
+  rampUp: z.number().min(0).optional(),
+  loops: z.number().min(1).optional(),
+  duration: z.number().min(1).optional(),
+  errorThreshold: z.number().min(0).max(100).optional(),
+  properties: z.record(z.string()).optional(),
+})
+
 const testRunnerSchema = z.object({
   image: z.string().optional(),
   build: buildConfigSchema.optional(),
+  entrypoint: z.array(z.string()).optional(),
   command: z.array(z.string()).optional(),
   httpChecks: z.array(z.string()).optional(),
+  jmeter: jmeterConfigSchema.optional(),
   env: z.record(z.string()).optional(),
+  volumes: z.array(z.string()).optional(),
   mountRepos: z.array(z.string()).optional(),
   dependsOn: z.array(z.string()).optional(),
 }).refine(
-  (r) => r.command || (r.httpChecks && r.httpChecks.length > 0),
-  { message: "Test runner must have either 'command' or 'httpChecks'" }
+  (r) => r.command || (r.httpChecks && r.httpChecks.length > 0) || r.jmeter,
+  { message: "Test runner must have either 'command', 'httpChecks', or 'jmeter'" }
 )
 
 const artifactsSchema = z.object({
