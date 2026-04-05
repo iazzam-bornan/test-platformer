@@ -2,7 +2,11 @@ import { useParams, useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
 import { useScenarioDetail, useCreateRun } from "../hooks/useApi"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowLeft02Icon, PlayIcon, Settings01Icon } from "@hugeicons/core-free-icons"
+import {
+  ArrowLeft02Icon,
+  PlayIcon,
+  Settings01Icon,
+} from "@hugeicons/core-free-icons"
 import { Button } from "@workspace/ui/components/button"
 import {
   Card,
@@ -83,7 +87,8 @@ export function RunConfigurationPage() {
           className="mb-4 -ml-2 text-muted-foreground hover:text-foreground"
           onClick={() => navigate({ to: `/scenarios/${id}` } as never)}
         >
-          <HugeiconsIcon icon={ArrowLeft02Icon} size={14} /> Back to {scenario.name}
+          <HugeiconsIcon icon={ArrowLeft02Icon} size={14} /> Back to{" "}
+          {scenario.name}
         </Button>
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">

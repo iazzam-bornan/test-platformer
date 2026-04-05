@@ -33,14 +33,11 @@ function NavLink({
     <SidebarMenuItem>
       <Link to={to} className="block w-full">
         <div
-          className={`
-            group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all
-            ${
-              isActive
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:text-foreground"
-            }
-          `}
+          className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+            isActive
+              ? "bg-primary/10 text-primary"
+              : "text-muted-foreground hover:text-foreground"
+          } `}
         >
           <span
             className={`flex h-6 w-6 items-center justify-center rounded text-xs ${
@@ -77,7 +74,7 @@ export function RootLayout() {
                 <span className="font-heading text-sm font-bold tracking-tight">
                   TestPlatform
                 </span>
-                <span className="text-[10px] font-mono text-muted-foreground">
+                <span className="font-mono text-[10px] text-muted-foreground">
                   v0.1.0
                 </span>
               </div>
@@ -85,7 +82,7 @@ export function RootLayout() {
           </SidebarHeader>
 
           <SidebarContent className="px-2 pt-4">
-            <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+            <p className="mb-2 px-3 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
               Navigation
             </p>
             <SidebarMenu className="space-y-0.5">
