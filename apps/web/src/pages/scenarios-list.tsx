@@ -61,7 +61,7 @@ export function ScenarioListPage() {
         <HugeiconsIcon
           icon={Search01Icon}
           size={16}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
         />
         <Input
           placeholder="Search scenarios..."
@@ -102,9 +102,7 @@ export function ScenarioListPage() {
             <HugeiconsIcon icon={FileAddIcon} size={24} />
           </div>
           <p className="font-heading text-sm font-semibold">
-            {scenarios?.length === 0
-              ? "No scenarios yet"
-              : "No results found"}
+            {scenarios?.length === 0 ? "No scenarios yet" : "No results found"}
           </p>
           <p className="mt-1 max-w-xs text-xs text-muted-foreground">
             {scenarios?.length === 0
@@ -118,7 +116,7 @@ export function ScenarioListPage() {
         {filtered.map((scenario) => (
           <Card
             key={scenario.id}
-            className="group h-full transition-all duration-200 hover:border-primary/40 hover:glow-primary-sm"
+            className="group hover:glow-primary-sm h-full transition-all duration-200 hover:border-primary/40"
           >
             <Link
               to={"/scenarios/$id" as any}
@@ -126,7 +124,7 @@ export function ScenarioListPage() {
             >
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="font-heading text-base font-semibold leading-snug">
+                  <CardTitle className="font-heading text-base leading-snug font-semibold">
                     {scenario.name}
                   </CardTitle>
                   <HugeiconsIcon
@@ -136,7 +134,7 @@ export function ScenarioListPage() {
                   />
                 </div>
                 {scenario.description && (
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground line-clamp-2">
+                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                     {scenario.description}
                   </p>
                 )}
@@ -298,9 +296,7 @@ function QuickRunModal({
           {scenario?.config.infrastructure &&
             Object.keys(scenario.config.infrastructure).length > 0 && (
               <div className="space-y-3">
-                <Label className="text-xs font-semibold">
-                  Image Overrides
-                </Label>
+                <Label className="text-xs font-semibold">Image Overrides</Label>
                 {Object.entries(scenario.config.infrastructure).map(
                   ([name, infra]) => (
                     <div key={name} className="flex items-center gap-2">

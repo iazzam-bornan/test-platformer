@@ -5,7 +5,11 @@ import { RunConfigurationPage } from "./pages/run-configuration.tsx"
 import { RunLivePage } from "./pages/run-live.tsx"
 import { RunHistoryPage } from "./pages/run-history.tsx"
 import { ActiveRunsPage } from "./pages/active-runs.tsx"
-import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router"
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+} from "@tanstack/react-router"
 
 const rootRoute = createRootRoute({
   component: RootLayout,
