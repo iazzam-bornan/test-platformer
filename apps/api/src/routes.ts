@@ -228,7 +228,9 @@ export function createRunRoutes(platform: TestPlatform): Hono {
     })
   })
 
-  // SSE: test results (live or historical)
+  // SSE: test results (live or historical).
+  // Always replays existing results first, then polls for new ones, so the
+  // client never misses results that streamed in before they connected.
   routes.get("/:id/results", async (c) => {
     const id = c.req.param("id")
     const state = await platform.getRun(id)
@@ -237,51 +239,71 @@ export function createRunRoutes(platform: TestPlatform): Hono {
     const isTerminal = (s: string) =>
       ["passed", "failed", "cancelled", "error"].includes(s)
 
-    // Historical
-    if (isTerminal(state.status) && state.testResults.length > 0) {
-      return streamSSE(c, async (stream) => {
-        for (const result of state.testResults) {
-          await stream.writeSSE({
-            data: JSON.stringify(result),
-            event: "result",
-          })
-        }
-        await stream.writeSSE({ data: state.status, event: "status" })
-      })
-    }
-
-    // Live: subscribe to result events
     return streamSSE(c, async (stream) => {
-      const handler = (runId: string, result: any) => {
-        if (runId === id) {
-          stream
-            .writeSSE({ data: JSON.stringify(result), event: "result" })
+      let resultsSent = 0
+      let logsSent = 0
+
+      const flushResults = async () => {
+        const current = await platform.getRun(id)
+        if (!current) return
+        // Emit a synthetic "plan" event so the client gets plannedTotal even
+        // if it connected after the runner already emitted it.
+        if (resultsSent === 0 && typeof current.plannedTotal === "number") {
+          await stream
+            .writeSSE({
+              data: JSON.stringify({
+                type: "plan",
+                totalChecks: current.plannedTotal,
+              }),
+              event: "result",
+            })
             .catch(() => {})
         }
-      }
-      const logHandler = (runId: string, line: string) => {
-        if (runId === id && line.includes("[test]")) {
-          stream.writeSSE({ data: line, event: "log" }).catch(() => {})
+        for (let i = resultsSent; i < current.testResults.length; i++) {
+          await stream
+            .writeSSE({
+              data: JSON.stringify(current.testResults[i]),
+              event: "result",
+            })
+            .catch(() => {})
         }
+        resultsSent = current.testResults.length
+
+        // Also stream test-runner log lines (lines tagged "[test]")
+        for (let i = logsSent; i < current.logs.length; i++) {
+          const line = current.logs[i]
+          if (line && line.includes("[test]")) {
+            await stream
+              .writeSSE({ data: line, event: "log" })
+              .catch(() => {})
+          }
+        }
+        logsSent = current.logs.length
       }
 
-      platform.on("result", handler)
-      platform.on("log", logHandler)
+      // Initial replay
+      await flushResults()
 
+      // If already terminal, send the final status and we're done
+      if (isTerminal(state.status)) {
+        await stream.writeSSE({ data: state.status, event: "status" })
+        return
+      }
+
+      // Live: poll until terminal
       while (true) {
         const current = await platform.getRun(id)
-        if (!current || isTerminal(current.status)) {
-          await stream.writeSSE({
-            data: current?.status ?? "unknown",
-            event: "status",
-          })
+        if (!current) {
+          await stream.writeSSE({ data: "unknown", event: "status" })
           break
         }
-        await stream.sleep(1000)
+        await flushResults()
+        if (isTerminal(current.status)) {
+          await stream.writeSSE({ data: current.status, event: "status" })
+          break
+        }
+        await stream.sleep(500)
       }
-
-      platform.off("result", handler)
-      platform.off("log", logHandler)
     })
   })
 

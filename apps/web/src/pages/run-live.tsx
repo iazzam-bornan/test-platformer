@@ -283,11 +283,13 @@ function CucumberScenarioCard({
 function CucumberResultsView({
   results,
   summary,
+  plannedTotal,
 }: {
   results: TestResult[]
   summary: TestResult | null
+  plannedTotal?: number
 }) {
-  const total = summary?.totalChecks ?? results.length
+  const total = summary?.totalChecks ?? plannedTotal ?? results.length
   const passed = summary?.passed ?? results.filter((r) => r.status === "passed").length
   const failed = summary?.failed ?? results.filter((r) => r.status === "failed").length
   const skipped = summary?.skipped ?? results.filter((r) => r.status === "skipped").length
@@ -386,17 +388,25 @@ function CucumberResultsView({
 function ResultsView({
   results,
   summary,
+  plannedTotal,
 }: {
   results: TestResult[]
   summary: TestResult | null
+  plannedTotal?: number
 }) {
   // Detect cucumber test by presence of feature field
   const isCucumber = results.some((r) => r.feature !== undefined)
   if (isCucumber) {
-    return <CucumberResultsView results={results} summary={summary} />
+    return (
+      <CucumberResultsView
+        results={results}
+        summary={summary}
+        plannedTotal={plannedTotal}
+      />
+    )
   }
 
-  const total = summary?.totalChecks ?? results.length
+  const total = summary?.totalChecks ?? plannedTotal ?? results.length
   const passed = summary?.passed ?? results.filter((r) => r.ok).length
   const failed = summary?.failed ?? results.filter((r) => !r.ok).length
 
@@ -557,6 +567,7 @@ export function RunLivePage() {
     results,
     logs: testRunnerLogs,
     summary,
+    plannedTotal: streamedPlannedTotal,
   } = useTestResults(id)
 
   if (error) {
@@ -743,7 +754,11 @@ export function RunLivePage() {
 
         {/* Results tab */}
         <TabsContent value="results" className="mt-4">
-          <ResultsView results={results} summary={summary} />
+          <ResultsView
+            results={results}
+            summary={summary}
+            plannedTotal={streamedPlannedTotal ?? run.plannedTotal}
+          />
           {testRunnerLogs.length > 0 && (
             <div className="mt-4">
               <p className="mb-2 text-xs font-semibold text-muted-foreground">

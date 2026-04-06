@@ -282,6 +282,7 @@ export function useTestResults(runId: string) {
   const [results, setResults] = useState<TestResult[]>([])
   const [logs, setLogs] = useState<string[]>([])
   const [summary, setSummary] = useState<TestResult | null>(null)
+  const [plannedTotal, setPlannedTotal] = useState<number | undefined>()
   const [connected, setConnected] = useState(false)
 
   useEffect(() => {
@@ -290,6 +291,7 @@ export function useTestResults(runId: string) {
     setResults([])
     setLogs([])
     setSummary(null)
+    setPlannedTotal(undefined)
 
     const es = new EventSource(`${API_URL}/runs/${runId}/results`)
 
@@ -299,8 +301,9 @@ export function useTestResults(runId: string) {
         if (result.type === "summary") {
           setSummary(result)
         } else if (result.type === "plan") {
-          // Plan event: metadata, not a real result. The plannedTotal is also
-          // available on the Run object via the API; ignore it here.
+          if (typeof result.totalChecks === "number") {
+            setPlannedTotal(result.totalChecks)
+          }
         } else {
           setResults((prev) => [...prev, result])
         }
@@ -327,5 +330,5 @@ export function useTestResults(runId: string) {
     }
   }, [runId])
 
-  return { results, logs, summary, connected }
+  return { results, logs, summary, plannedTotal, connected }
 }

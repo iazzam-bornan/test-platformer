@@ -69,6 +69,7 @@ tests:
           - homepage
           - api
           - tasks
+          - failures
       baseUrl: http://frontend:80
       browser: chromium
       headless: true
