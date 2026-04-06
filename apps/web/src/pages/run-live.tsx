@@ -598,6 +598,7 @@ export function RunLivePage() {
     summary,
     plannedTotal: streamedPlannedTotal,
   } = useTestResults(id)
+  const uiSettings = useUISettings()
 
   if (error) {
     return (
@@ -655,7 +656,6 @@ export function RunLivePage() {
   const cucumberCfg = runConfig?.tests?.runner?.cucumber
   const hasBrowserStream = Boolean(cucumberCfg?.streamBrowser)
   const streamAvailable = hasBrowserStream && !isTerminal
-  const uiSettings = useUISettings()
 
   return (
     <div className="space-y-6">
