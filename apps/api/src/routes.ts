@@ -414,6 +414,24 @@ function scenarioToRunConfig(scenario: any, overrides?: any, scenariosDir?: stri
           properties: runner.jmeter.properties,
         },
       }
+    } else if (runner.cucumber) {
+      const resolveHostPath = (p: string) =>
+        p.startsWith("./") || p.startsWith("../")
+          ? path.resolve(scenariosDir ?? "", p)
+          : p
+
+      config.test = {
+        cucumber: {
+          features: resolveHostPath(runner.cucumber.features),
+          steps: runner.cucumber.steps ? resolveHostPath(runner.cucumber.steps) : undefined,
+          image: runner.cucumber.image,
+          baseUrl: runner.cucumber.baseUrl,
+          browser: runner.cucumber.browser,
+          headless: runner.cucumber.headless,
+          tags: runner.cucumber.tags,
+          env: runner.cucumber.env,
+        },
+      }
     } else if (runner.command) {
       config.test = {
         image: runner.image ?? "node:20-slim",

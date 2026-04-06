@@ -216,6 +216,26 @@ export interface TestResult {
   p90Duration?: number
   p95Duration?: number
   throughput?: number
+  // cucumber fields
+  feature?: string
+  scenario?: string
+  tags?: string[]
+  steps?: CucumberStepResult[]
+  attachments?: CucumberAttachment[]
+  skipped?: number
+}
+
+export interface CucumberStepResult {
+  keyword: string
+  text: string
+  status: string
+  duration: number
+  error?: string
+}
+
+export interface CucumberAttachment {
+  mimeType: string
+  data: string
 }
 
 export function useServiceLogs(runId: string, service: string) {

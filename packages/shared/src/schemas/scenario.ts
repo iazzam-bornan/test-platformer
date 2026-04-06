@@ -82,6 +82,17 @@ const jmeterConfigSchema = z.object({
   properties: z.record(z.string()).optional(),
 })
 
+const cucumberConfigSchema = z.object({
+  features: z.string(),
+  steps: z.string().optional(),
+  image: z.string().optional(),
+  baseUrl: z.string().optional(),
+  browser: z.enum(["chromium", "firefox", "webkit"]).optional(),
+  headless: z.boolean().optional(),
+  tags: z.string().optional(),
+  env: z.record(z.string()).optional(),
+})
+
 const testRunnerSchema = z.object({
   image: z.string().optional(),
   build: buildConfigSchema.optional(),
@@ -89,13 +100,14 @@ const testRunnerSchema = z.object({
   command: z.array(z.string()).optional(),
   httpChecks: z.array(z.string()).optional(),
   jmeter: jmeterConfigSchema.optional(),
+  cucumber: cucumberConfigSchema.optional(),
   env: z.record(z.string()).optional(),
   volumes: z.array(z.string()).optional(),
   mountRepos: z.array(z.string()).optional(),
   dependsOn: z.array(z.string()).optional(),
 }).refine(
-  (r) => r.command || (r.httpChecks && r.httpChecks.length > 0) || r.jmeter,
-  { message: "Test runner must have either 'command', 'httpChecks', or 'jmeter'" }
+  (r) => r.command || (r.httpChecks && r.httpChecks.length > 0) || r.jmeter || r.cucumber,
+  { message: "Test runner must have either 'command', 'httpChecks', 'jmeter', or 'cucumber'" }
 )
 
 const artifactsSchema = z.object({

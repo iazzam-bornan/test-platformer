@@ -168,6 +168,221 @@ function MetricCard({
   )
 }
 
+function CucumberStepRow({
+  step,
+}: {
+  step: NonNullable<TestResult["steps"]>[number]
+}) {
+  const color =
+    step.status === "passed"
+      ? "text-emerald-400"
+      : step.status === "failed"
+        ? "text-red-400"
+        : "text-muted-foreground"
+  const icon =
+    step.status === "passed" ? "✓" : step.status === "failed" ? "✗" : "○"
+
+  return (
+    <div className="border-l-2 border-muted pl-4 py-1">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <span className={`font-mono text-[11px] ${color}`}>
+            {icon} <span className="font-semibold">{step.keyword}</span>{" "}
+            <span className="text-foreground/80">{step.text}</span>
+          </span>
+          {step.error && (
+            <pre className="mt-1.5 overflow-x-auto rounded bg-red-500/5 border border-red-500/20 p-2 font-mono text-[10px] text-red-400 whitespace-pre-wrap">
+              {step.error}
+            </pre>
+          )}
+        </div>
+        <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+          {step.duration}ms
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function CucumberScenarioCard({
+  scenario,
+}: {
+  scenario: TestResult
+}) {
+  const [expanded, setExpanded] = useState(!scenario.ok)
+  const color =
+    scenario.status === "passed"
+      ? "text-emerald-400"
+      : scenario.status === "failed"
+        ? "text-red-400"
+        : "text-amber-400"
+  const icon =
+    scenario.status === "passed" ? "✓" : scenario.status === "failed" ? "✗" : "○"
+
+  return (
+    <div className="rounded-lg border">
+      <button
+        onClick={() => setExpanded((e) => !e)}
+        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-muted/30"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className={`font-mono text-xs font-bold ${color}`}>{icon}</span>
+          <span className="truncate text-xs font-semibold">{scenario.scenario}</span>
+          {scenario.tags && scenario.tags.length > 0 && (
+            <div className="flex gap-1">
+              {scenario.tags.map((t) => (
+                <span
+                  key={t}
+                  className="rounded bg-sky-500/10 px-1.5 py-0.5 font-mono text-[9px] text-sky-400"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2 text-[10px]">
+          <span className="font-mono text-muted-foreground tabular-nums">
+            {scenario.duration}ms
+          </span>
+          <span className="text-muted-foreground">{expanded ? "▾" : "▸"}</span>
+        </div>
+      </button>
+      {expanded && scenario.steps && scenario.steps.length > 0 && (
+        <div className="space-y-0.5 border-t px-3 py-2">
+          {scenario.steps.map((step, i) => (
+            <CucumberStepRow key={i} step={step} />
+          ))}
+          {scenario.attachments && scenario.attachments.length > 0 && (
+            <div className="mt-3 space-y-2 border-t pt-3">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Attachments ({scenario.attachments.length})
+              </p>
+              {scenario.attachments.map((att, i) =>
+                att.mimeType?.startsWith("image/") ? (
+                  <img
+                    key={i}
+                    src={`data:${att.mimeType};base64,${att.data}`}
+                    alt={`attachment ${i}`}
+                    className="max-w-full rounded border"
+                  />
+                ) : (
+                  <p key={i} className="font-mono text-[10px] text-muted-foreground">
+                    {att.mimeType} ({Math.round(att.data.length / 1024)}KB)
+                  </p>
+                )
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CucumberResultsView({
+  results,
+  summary,
+}: {
+  results: TestResult[]
+  summary: TestResult | null
+}) {
+  const total = summary?.totalChecks ?? results.length
+  const passed = summary?.passed ?? results.filter((r) => r.status === "passed").length
+  const failed = summary?.failed ?? results.filter((r) => r.status === "failed").length
+  const skipped = summary?.skipped ?? results.filter((r) => r.status === "skipped").length
+
+  // Group scenarios by feature
+  const features = new Map<string, TestResult[]>()
+  for (const r of results) {
+    const key = r.feature ?? "unnamed"
+    const group = features.get(key) ?? []
+    group.push(r)
+    features.set(key, group)
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Progress bar */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">
+            {results.length} / {total || "?"} scenarios
+          </span>
+          <span className="font-mono">
+            <span className="text-emerald-400">{passed} passed</span>
+            {failed > 0 && <span className="ml-2 text-red-400">{failed} failed</span>}
+            {skipped > 0 && <span className="ml-2 text-amber-400">{skipped} skipped</span>}
+          </span>
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-emerald-400 transition-all duration-300"
+            style={{ width: total ? `${(passed / total) * 100}%` : "0%" }}
+          />
+        </div>
+      </div>
+
+      {/* Metric cards */}
+      {summary && summary.avgDuration !== undefined && (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          <MetricCard label="Scenarios" value={total} />
+          <MetricCard label="Passed" value={passed} />
+          <MetricCard label="Failed" value={failed} />
+          <MetricCard label="Skipped" value={skipped} />
+          <MetricCard label="Avg Step" value={summary.avgDuration} unit="ms" />
+          <MetricCard label="P95 Step" value={summary.p95Duration ?? 0} unit="ms" />
+        </div>
+      )}
+
+      {/* Feature groups */}
+      {[...features.entries()].map(([featureName, scenarios]) => {
+        const fPassed = scenarios.filter((s) => s.status === "passed").length
+        const fTotal = scenarios.length
+        return (
+          <div key={featureName} className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="font-heading text-sm font-semibold">{featureName}</h3>
+              <span className="font-mono text-[10px] text-muted-foreground">
+                {fPassed}/{fTotal} passed
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              {scenarios.map((scenario, i) => (
+                <CucumberScenarioCard key={i} scenario={scenario} />
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      {results.length === 0 && (
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          Waiting for scenario results...
+        </p>
+      )}
+
+      {/* Summary */}
+      {summary && (
+        <div
+          className={`rounded-lg border p-4 text-center ${
+            summary.passRate === 100
+              ? "border-emerald-400/30 bg-emerald-400/5"
+              : "border-red-400/30 bg-red-400/5"
+          }`}
+        >
+          <p className="font-mono text-2xl font-bold tabular-nums">
+            {summary.passRate}%
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {summary.passed}/{summary.totalChecks} scenarios passed
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ResultsView({
   results,
   summary,
@@ -175,6 +390,12 @@ function ResultsView({
   results: TestResult[]
   summary: TestResult | null
 }) {
+  // Detect cucumber test by presence of feature field
+  const isCucumber = results.some((r) => r.feature !== undefined)
+  if (isCucumber) {
+    return <CucumberResultsView results={results} summary={summary} />
+  }
+
   const total = summary?.totalChecks ?? results.length
   const passed = summary?.passed ?? results.filter((r) => r.ok).length
   const failed = summary?.failed ?? results.filter((r) => !r.ok).length
