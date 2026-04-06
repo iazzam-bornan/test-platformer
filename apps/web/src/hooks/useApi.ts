@@ -184,6 +184,48 @@ export function useDockerStatus() {
   })
 }
 
+export interface QueueStatus {
+  active: number
+  queued: number
+  max: number
+}
+
+export function useQueueStatus() {
+  return useQuery({
+    queryKey: ["queue-status"],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/runs/queue`)
+      if (!res.ok) throw new Error("Failed to load queue status")
+      const data = await res.json()
+      return data.data as QueueStatus
+    },
+    refetchInterval: 3000,
+  })
+}
+
+export function useSetMaxConcurrentRuns() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (max: number) => {
+      const res = await fetch(`${API_URL}/runs/queue/max`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ max }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Failed to update max concurrent runs")
+      }
+      const data = await res.json()
+      return data.data as QueueStatus
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["queue-status"] })
+      queryClient.invalidateQueries({ queryKey: ["runs"] })
+    },
+  })
+}
+
 export interface TestResult {
   url?: string
   iteration?: number

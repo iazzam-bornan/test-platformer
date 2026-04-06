@@ -1,6 +1,7 @@
 import type { Scenario } from "../schemas/scenario"
 
 export type RunStatus =
+  | "queued"
   | "pending"
   | "cloning"
   | "building"
@@ -40,6 +41,10 @@ export interface Run {
    * could not declare it upfront (e.g. duration-based JMeter tests).
    */
   plannedTotal?: number
+  /**
+   * For runs in the "queued" status, the 1-indexed position in the queue.
+   */
+  queuePosition?: number
   preserveOnFailure: boolean
   preserveAlways: boolean
   error?: string

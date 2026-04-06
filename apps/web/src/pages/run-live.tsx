@@ -38,6 +38,11 @@ const statusConfig: Record<
   RunStatus,
   { color: string; bg: string; label: string }
 > = {
+  queued: {
+    color: "text-violet-400",
+    bg: "bg-violet-400",
+    label: "Queued",
+  },
   pending: {
     color: "text-muted-foreground",
     bg: "bg-muted-foreground",

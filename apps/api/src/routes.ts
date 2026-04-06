@@ -30,6 +30,7 @@ function toFrontendRun(
     })),
     exitCode: state.exitCode,
     plannedTotal: state.plannedTotal,
+    queuePosition: state.queuePosition,
     preserveOnFailure: state.config.cleanup?.onFail === "preserve",
     preserveAlways:
       state.config.cleanup?.onPass === "preserve" &&
@@ -47,6 +48,22 @@ const runMeta = new Map<
 // Routes
 export function createRunRoutes(platform: TestPlatform): Hono {
   const routes = new Hono()
+
+  // Queue status snapshot
+  routes.get("/queue", async (c) => {
+    return c.json({ data: platform.getQueueStatus() })
+  })
+
+  // Update max concurrent runs at runtime
+  routes.put("/queue/max", async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const max = Number(body?.max)
+    if (!Number.isFinite(max) || max < 0) {
+      return c.json({ error: "max must be a non-negative number" }, 400)
+    }
+    await platform.setMaxConcurrentRuns(max)
+    return c.json({ data: platform.getQueueStatus() })
+  })
 
   // List all runs
   routes.get("/", async (c) => {

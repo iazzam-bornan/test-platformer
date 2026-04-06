@@ -12,6 +12,7 @@ const statusConfig: Record<
   RunStatus,
   { color: string; dot: string; label: string }
 > = {
+  queued: { color: "text-violet-400", dot: "bg-violet-400", label: "Queued" },
   pending: { color: "text-muted-foreground", dot: "bg-muted-foreground", label: "Pending" },
   cloning: { color: "text-sky-400", dot: "bg-sky-400", label: "Cloning" },
   building: { color: "text-sky-400", dot: "bg-sky-400", label: "Building" },
@@ -26,7 +27,7 @@ const statusConfig: Record<
 }
 
 const ACTIVE_STATUSES = [
-  "pending", "cloning", "building", "booting", "waiting_healthy", "testing", "cleaning_up",
+  "queued", "pending", "cloning", "building", "booting", "waiting_healthy", "testing", "cleaning_up",
 ]
 
 function RunCard({ run }: { run: Run }) {
@@ -70,6 +71,9 @@ function RunCard({ run }: { run: Run }) {
               className={`shrink-0 text-[10px] ${cfg.color}`}
             >
               {cfg.label}
+              {run.status === "queued" && run.queuePosition !== undefined && (
+                <span className="ml-1 opacity-70">#{run.queuePosition}</span>
+              )}
             </Badge>
           </div>
           <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
