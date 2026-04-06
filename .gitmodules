@@ -2,8 +2,8 @@
 	path = packages/core
 	url = https://github.com/iazzam-bornan/test-platform-core.git
 [submodule "taskboard-e2e-tests"]
-	path = taskboard-e2e-tests
+	path = samples/taskboard-e2e-tests
 	url = https://github.com/iazzam-bornan/taskboard-e2e-tests.git
 [submodule "taskboard-app"]
-	path = taskboard-app
+	path = samples/taskboard-app
 	url = https://github.com/iazzam-bornan/sample-app.git
