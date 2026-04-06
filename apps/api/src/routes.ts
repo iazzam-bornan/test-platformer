@@ -324,6 +324,46 @@ export function createRunRoutes(platform: TestPlatform): Hono {
     })
   })
 
+  // Browser streaming: return the WebSocket endpoint for the run's test-runner
+  // noVNC server. The frontend connects directly.
+  routes.get("/:id/browser-stream", async (c) => {
+    const id = c.req.param("id")
+    const state = await platform.getRun(id)
+    if (!state) return c.json({ error: "Run not found" }, 404)
+
+    // Verify streaming is actually enabled for this run
+    const cucumber =
+      "cucumber" in state.config.test ? state.config.test.cucumber : null
+    if (!cucumber?.streamBrowser) {
+      return c.json({ error: "Browser streaming not enabled for this run" }, 400)
+    }
+
+    // Look up the test-runner container and its mapped port
+    const { getContainerIds, getContainerHostPort } = await import(
+      "@testplatform/core/docker"
+    )
+    const projectName = `tp-${id}`
+    const ids = await getContainerIds(projectName)
+    const containerId = ids["test-runner"]
+    if (!containerId) {
+      return c.json({ error: "Test runner container not found (not yet started?)" }, 404)
+    }
+
+    const hostPort = await getContainerHostPort(containerId, 6080)
+    if (!hostPort) {
+      return c.json({ error: "VNC port not mapped yet" }, 404)
+    }
+
+    return c.json({
+      data: {
+        host: hostPort.host,
+        port: hostPort.port,
+        path: "websockify",
+        interactive: cucumber.streamInteractive ?? false,
+      },
+    })
+  })
+
   // Get collected service log files
   routes.get("/:id/logs/files", async (c) => {
     const id = c.req.param("id")
@@ -482,6 +522,9 @@ function scenarioToRunConfig(scenario: any, overrides?: any, scenariosDir?: stri
           headless: cu.headless,
           tags: cu.tags,
           env: cu.env,
+          // Live browser streaming — may be overridden per-run via overrides
+          streamBrowser: overrides?.streamBrowser ?? cu.streamBrowser,
+          streamInteractive: overrides?.streamInteractive ?? cu.streamInteractive,
         },
       }
     } else if (runner.command) {

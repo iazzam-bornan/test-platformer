@@ -19,13 +19,81 @@ export MESSAGE_FILE
 BROWSER="${BROWSER:-chromium}"
 HEADLESS="${HEADLESS:-true}"
 BASE_URL="${BASE_URL:-http://localhost}"
+STREAM_BROWSER="${STREAM_BROWSER:-false}"
+STREAM_INTERACTIVE="${STREAM_INTERACTIVE:-false}"
+
+# When browser streaming is enabled, headless must be off.
+if [ "$STREAM_BROWSER" = "true" ]; then
+  HEADLESS="false"
+  export HEADLESS
+fi
 
 echo "=== Cucumber + Playwright Test Runner ==="
 echo "Browser:  $BROWSER (headless: $HEADLESS)"
 echo "BaseUrl:  $BASE_URL"
+if [ "$STREAM_BROWSER" = "true" ]; then
+  echo "Stream:   ENABLED (interactive: $STREAM_INTERACTIVE)"
+fi
 if [ -n "$TAGS" ]; then
   echo "Tags:     $TAGS"
 fi
+
+# ---------------------------------------------------------------------------
+# VNC stack startup (only when STREAM_BROWSER=true)
+# ---------------------------------------------------------------------------
+VNC_PIDS=""
+if [ "$STREAM_BROWSER" = "true" ]; then
+  echo ""
+  echo "=== Starting VNC stack ==="
+
+  # Clean any stale display locks from a previous crashed run
+  rm -f /tmp/.X99-lock 2>/dev/null || true
+  rm -rf /tmp/.X11-unix/X99 2>/dev/null || true
+
+  # Start Xtigervnc on display :99 — combined X server + VNC listener on 5900
+  # -SecurityTypes None: no password (safe: port is docker-network internal,
+  #  the platform API is the only thing that talks to it via proxy)
+  # -geometry: browser window size
+  Xtigervnc :99 \
+    -SecurityTypes None \
+    -geometry 1280x720 \
+    -depth 24 \
+    -rfbport 5900 \
+    -localhost no \
+    > /tmp/xvnc.log 2>&1 &
+  VNC_PIDS="$! $VNC_PIDS"
+  export DISPLAY=:99
+
+  # Wait up to 5 seconds for the X server to become available
+  for i in 1 2 3 4 5; do
+    if xdpyinfo -display :99 >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+
+  # Tiny window manager so browser windows actually get decorated/managed
+  fluxbox -display :99 > /tmp/fluxbox.log 2>&1 &
+  VNC_PIDS="$! $VNC_PIDS"
+
+  # Start websockify to bridge noVNC WebSocket → VNC port 5900
+  # --web serves the noVNC static files (unused by us, but useful for debugging)
+  websockify --web /usr/share/novnc 6080 localhost:5900 \
+    > /tmp/websockify.log 2>&1 &
+  VNC_PIDS="$! $VNC_PIDS"
+
+  echo "VNC stack started (DISPLAY=$DISPLAY, noVNC on :6080)"
+  sleep 1
+fi
+
+cleanup_vnc() {
+  if [ -n "$VNC_PIDS" ]; then
+    for pid in $VNC_PIDS; do
+      kill "$pid" 2>/dev/null || true
+    done
+  fi
+}
+trap cleanup_vnc EXIT
 
 # ---------------------------------------------------------------------------
 # Repo mode: clone a test repo and run its own cucumber.js config

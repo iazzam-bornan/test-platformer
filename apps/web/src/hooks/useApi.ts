@@ -155,6 +155,40 @@ export function useRunLogs(runId: string) {
   return { logs, connected }
 }
 
+export interface BrowserStreamInfo {
+  host: string
+  port: number
+  path: string
+  interactive: boolean
+}
+
+/**
+ * Fetch the live browser stream WebSocket address for a run. Polls until the
+ * test-runner container is up, then stops. Only meaningful for runs with
+ * cucumber.streamBrowser=true.
+ */
+export function useBrowserStream(runId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["browser-stream", runId],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/runs/${runId}/browser-stream`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Stream not available yet")
+      }
+      const data = await res.json()
+      return data.data as BrowserStreamInfo
+    },
+    enabled: !!runId && enabled,
+    refetchInterval: (query) => {
+      // Stop polling once we have a valid stream info
+      if (query.state.data) return false
+      return 2000
+    },
+    retry: false,
+  })
+}
+
 export function useRunArtifacts(runId: string) {
   return useQuery({
     queryKey: ["artifacts", runId],
@@ -170,6 +204,63 @@ export function useRunArtifacts(runId: string) {
 
 export function getArtifactUrl(runId: string, artifactPath: string) {
   return `${API_URL}/runs/${runId}/artifacts/${artifactPath}`
+}
+
+// ---------------------------------------------------------------------------
+// UI-only settings (persisted in localStorage). These are frontend
+// preferences that don't need to roundtrip through the API.
+// ---------------------------------------------------------------------------
+
+const UI_SETTINGS_KEY = "testplatform:ui-settings"
+
+export interface UISettings {
+  /**
+   * When true, the Live Browser viewer forwards mouse/keyboard input to
+   * the streamed browser (on runs where `cucumber.streamInteractive` is also
+   * true in the scenario config). Defaults to false — pure view.
+   */
+  browserStreamInteractive: boolean
+}
+
+const defaultUISettings: UISettings = {
+  browserStreamInteractive: false,
+}
+
+export function getUISettings(): UISettings {
+  if (typeof window === "undefined") return defaultUISettings
+  try {
+    const raw = window.localStorage.getItem(UI_SETTINGS_KEY)
+    if (!raw) return defaultUISettings
+    return { ...defaultUISettings, ...JSON.parse(raw) }
+  } catch {
+    return defaultUISettings
+  }
+}
+
+export function setUISettings(patch: Partial<UISettings>): UISettings {
+  const current = getUISettings()
+  const next = { ...current, ...patch }
+  try {
+    window.localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(next))
+    window.dispatchEvent(new Event("testplatform:ui-settings-changed"))
+  } catch {
+    // ignore
+  }
+  return next
+}
+
+export function useUISettings(): UISettings {
+  const [settings, setSettings] = useState<UISettings>(() => getUISettings())
+  useEffect(() => {
+    const handler = () => setSettings(getUISettings())
+    window.addEventListener("testplatform:ui-settings-changed", handler)
+    window.addEventListener("storage", handler)
+    return () => {
+      window.removeEventListener("testplatform:ui-settings-changed", handler)
+      window.removeEventListener("storage", handler)
+    }
+  }, [])
+  return settings
 }
 
 export function useDockerStatus() {

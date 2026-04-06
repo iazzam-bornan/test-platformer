@@ -11,14 +11,22 @@ import {
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { Switch } from "@workspace/ui/components/switch"
+import { Separator } from "@workspace/ui/components/separator"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Settings01Icon } from "@hugeicons/core-free-icons"
-import { useQueueStatus, useSetMaxConcurrentRuns } from "../hooks/useApi"
+import {
+  useQueueStatus,
+  useSetMaxConcurrentRuns,
+  useUISettings,
+  setUISettings,
+} from "../hooks/useApi"
 
 export function SettingsDialog() {
   const [open, setOpen] = useState(false)
   const { data: queue } = useQueueStatus()
   const setMax = useSetMaxConcurrentRuns()
+  const ui = useUISettings()
   const [maxValue, setMaxValue] = useState<string>("")
   const [error, setError] = useState<string | null>(null)
 
@@ -34,11 +42,13 @@ export function SettingsDialog() {
     setError(null)
     const parsed = Number(maxValue)
     if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
-      setError("Must be a non-negative integer (0 = unlimited)")
+      setError("Max concurrent runs must be a non-negative integer (0 = unlimited)")
       return
     }
     try {
-      await setMax.mutateAsync(parsed)
+      if (queue && parsed !== queue.max) {
+        await setMax.mutateAsync(parsed)
+      }
       setOpen(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save")
@@ -65,7 +75,8 @@ export function SettingsDialog() {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="space-y-5 py-2">
+          {/* Platform: max concurrent runs */}
           <div className="space-y-2">
             <Label htmlFor="max-concurrent" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Max concurrent runs
@@ -90,6 +101,32 @@ export function SettingsDialog() {
                 Currently: {queue.active} active, {queue.queued} queued
               </p>
             )}
+          </div>
+
+          <Separator />
+
+          {/* UI: browser stream interactivity */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Browser stream
+            </Label>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="text-xs font-medium">Interactive viewer</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Forward mouse and keyboard input to the live browser while
+                  watching a running test. Only works when the scenario itself
+                  enables streaming. Interacting with a running test may cause
+                  it to fail — use carefully.
+                </p>
+              </div>
+              <Switch
+                checked={ui.browserStreamInteractive}
+                onCheckedChange={(v) =>
+                  setUISettings({ browserStreamInteractive: v })
+                }
+              />
+            </div>
           </div>
 
           {error && (

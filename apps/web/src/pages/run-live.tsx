@@ -9,9 +9,11 @@ import {
   useCleanupRun,
   useServiceLogs,
   useTestResults,
+  useUISettings,
   getArtifactUrl,
 } from "../hooks/useApi"
 import type { TestResult } from "../hooks/useApi"
+import { BrowserStreamViewer } from "../components/browser-stream-viewer"
 import { useEffect, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft02Icon, PlayIcon } from "@hugeicons/core-free-icons"
@@ -648,6 +650,13 @@ export function RunLivePage() {
 
   const serviceNames = run.services.map((s: (typeof run.services)[0]) => s.name)
 
+  // Browser streaming derived flags
+  const runConfig = run.config as any
+  const cucumberCfg = runConfig?.tests?.runner?.cucumber
+  const hasBrowserStream = Boolean(cucumberCfg?.streamBrowser)
+  const streamAvailable = hasBrowserStream && !isTerminal
+  const uiSettings = useUISettings()
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -753,6 +762,14 @@ export function RunLivePage() {
               </Badge>
             )}
           </TabsTrigger>
+          {hasBrowserStream && (
+            <TabsTrigger value="browser" className="gap-1.5">
+              Live Browser
+              {streamAvailable && (
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" />
+              )}
+            </TabsTrigger>
+          )}
           <TabsTrigger value="orchestrator" className="gap-1.5">
             Orchestrator
             {connected && (
@@ -795,6 +812,22 @@ export function RunLivePage() {
             </div>
           )}
         </TabsContent>
+
+        {/* Live Browser tab */}
+        {hasBrowserStream && (
+          <TabsContent value="browser" className="mt-4">
+            <BrowserStreamViewer
+              runId={id}
+              enabled={streamAvailable}
+              localInteractive={uiSettings.browserStreamInteractive}
+            />
+            {!streamAvailable && (
+              <div className="rounded-lg border border-dashed border-border/60 bg-muted/30 p-8 text-center text-sm text-muted-foreground">
+                Live stream is only available while the test is running.
+              </div>
+            )}
+          </TabsContent>
+        )}
 
         {/* Orchestrator logs tab */}
         <TabsContent value="orchestrator" className="mt-4">
