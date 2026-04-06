@@ -52,11 +52,15 @@ if [ -n "$GIT_REPO_URL" ]; then
 
   cd "$PROJECT_DIR"
 
-  if [ -f package.json ]; then
-    echo ""
-    echo "=== Installing test repo dependencies ==="
-    npm install --omit=dev --no-audit --no-fund --silent
+  # Use the runner image's pre-installed cucumber/playwright/ts-node by
+  # symlinking its node_modules. This avoids running npm install in the
+  # cloned repo (slow, network-dependent, and risks dependency confusion).
+  echo ""
+  echo "=== Linking runner dependencies ==="
+  if [ -e node_modules ] && [ ! -L node_modules ]; then
+    rm -rf node_modules
   fi
+  ln -sfn /runner/node_modules node_modules
 
   echo ""
   echo "=== Running cucumber-js ==="
@@ -66,7 +70,7 @@ if [ -n "$GIT_REPO_URL" ]; then
   export RESULTS_FILE="$RESULTS_DIR/cucumber.json"
 
   set +e
-  npx cucumber-js
+  /runner/node_modules/.bin/cucumber-js
   EXIT_CODE=$?
   set -e
 
@@ -132,7 +136,12 @@ echo "=== Parsing Results ==="
 if [ -f "$RESULTS_DIR/cucumber.json" ]; then
   node /runner/parse-results.js "$RESULTS_DIR/cucumber.json"
 else
-  echo "WARNING: No cucumber.json output found" >&2
+  # No results file means cucumber never actually ran successfully.
+  # Force-fail the run regardless of the underlying exit code.
+  echo "ERROR: cucumber.json was not produced — cucumber did not run successfully" >&2
+  if [ "$EXIT_CODE" -eq 0 ]; then
+    EXIT_CODE=1
+  fi
 fi
 
 echo ""
