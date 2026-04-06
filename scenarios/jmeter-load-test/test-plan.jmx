@@ -34,7 +34,7 @@
           </elementProp>
           <elementProp name="LOOPS" elementType="Argument">
             <stringProp name="Argument.name">LOOPS</stringProp>
-            <stringProp name="Argument.value">${__P(LOOPS,3)}</stringProp>
+            <stringProp name="Argument.value">${__P(LOOPS,5)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="ERROR_THRESHOLD" elementType="Argument">

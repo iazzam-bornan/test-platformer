@@ -82,16 +82,30 @@ const jmeterConfigSchema = z.object({
   properties: z.record(z.string()).optional(),
 })
 
+const cucumberRepoSchema = z.object({
+  url: z.string(),
+  ref: z.string().optional(),
+  modules: z.array(z.string()).min(1),
+  token: z.string().optional(),
+})
+
 const cucumberConfigSchema = z.object({
-  features: z.string(),
+  // Mode A: local files
+  features: z.string().optional(),
   steps: z.string().optional(),
+  // Mode B: clone from a git repo
+  repo: cucumberRepoSchema.optional(),
+  // Common
   image: z.string().optional(),
   baseUrl: z.string().optional(),
   browser: z.enum(["chromium", "firefox", "webkit"]).optional(),
   headless: z.boolean().optional(),
   tags: z.string().optional(),
   env: z.record(z.string()).optional(),
-})
+}).refine(
+  (c) => (c.features !== undefined) !== (c.repo !== undefined),
+  { message: "Cucumber config must have exactly one of 'features' (local) or 'repo' (remote), not both" }
+)
 
 const testRunnerSchema = z.object({
   image: z.string().optional(),

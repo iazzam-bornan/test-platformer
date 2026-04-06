@@ -1,7 +1,7 @@
 version: 1
 
 name: taskboard-cucumber
-description: Task Board end-to-end tests using Cucumber + Playwright
+description: Task Board E2E tests pulled from the taskboard-e2e-tests repo (Cucumber + Playwright)
 tags:
   - e2e
   - cucumber
@@ -62,8 +62,13 @@ infrastructure:
 tests:
   runner:
     cucumber:
-      features: ./taskboard-cucumber/features
-      steps: ./taskboard-cucumber/steps
+      repo:
+        url: https://github.com/iazzam-bornan/taskboard-e2e-tests.git
+        ref: main
+        modules:
+          - homepage
+          - api
+          - tasks
       baseUrl: http://frontend:80
       browser: chromium
       headless: true

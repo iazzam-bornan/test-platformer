@@ -420,16 +420,28 @@ function scenarioToRunConfig(scenario: any, overrides?: any, scenariosDir?: stri
           ? path.resolve(scenariosDir ?? "", p)
           : p
 
+      const cu = runner.cucumber
       config.test = {
         cucumber: {
-          features: resolveHostPath(runner.cucumber.features),
-          steps: runner.cucumber.steps ? resolveHostPath(runner.cucumber.steps) : undefined,
-          image: runner.cucumber.image,
-          baseUrl: runner.cucumber.baseUrl,
-          browser: runner.cucumber.browser,
-          headless: runner.cucumber.headless,
-          tags: runner.cucumber.tags,
-          env: runner.cucumber.env,
+          // Local mode
+          features: cu.features ? resolveHostPath(cu.features) : undefined,
+          steps: cu.steps ? resolveHostPath(cu.steps) : undefined,
+          // Repo mode (passed through as-is)
+          repo: cu.repo
+            ? {
+                url: cu.repo.url,
+                ref: cu.repo.ref,
+                modules: cu.repo.modules,
+                token: cu.repo.token,
+              }
+            : undefined,
+          // Common
+          image: cu.image,
+          baseUrl: cu.baseUrl,
+          browser: cu.browser,
+          headless: cu.headless,
+          tags: cu.tags,
+          env: cu.env,
         },
       }
     } else if (runner.command) {
