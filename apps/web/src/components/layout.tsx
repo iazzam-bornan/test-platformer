@@ -12,6 +12,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { GridViewIcon, Clock01Icon, Activity01Icon } from "@hugeicons/core-free-icons"
 import { useDockerStatus } from "../hooks/useApi"
+import { SettingsDialog } from "./settings-dialog"
 
 function NavLink({
   to,
@@ -107,8 +108,9 @@ export function RootLayout() {
           </SidebarContent>
 
           <SidebarFooter>
-            <div className="px-4 py-3">
-              <div className="flex items-center gap-2.5">
+            <div className="space-y-1 px-2 py-3">
+              <SettingsDialog />
+              <div className="flex items-center gap-2.5 px-2 py-1.5">
                 <div className="relative flex h-2 w-2">
                   <span
                     className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${docker?.available ? "animate-ping bg-emerald-400" : ""}`}

@@ -311,24 +311,39 @@ function CucumberResultsView({
   return (
     <div className="space-y-4">
       {/* Progress bar */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">
-            {results.length} / {total || "?"} scenarios
-          </span>
-          <span className="font-mono">
-            <span className="text-emerald-400">{passed} passed</span>
-            {failed > 0 && <span className="ml-2 text-red-400">{failed} failed</span>}
-            {skipped > 0 && <span className="ml-2 text-amber-400">{skipped} skipped</span>}
-          </span>
-        </div>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-emerald-400 transition-all duration-300"
-            style={{ width: total ? `${(passed / total) * 100}%` : "0%" }}
-          />
-        </div>
-      </div>
+      {(() => {
+        const passedPct = total ? (passed / total) * 100 : 0
+        const failedPct = total ? (failed / total) * 100 : 0
+        const skippedPct = total ? (skipped / total) * 100 : 0
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">
+                {results.length} / {total || "?"} scenarios
+              </span>
+              <span className="font-mono">
+                <span className="text-emerald-400">{passed} passed</span>
+                {failed > 0 && <span className="ml-2 text-red-400">{failed} failed</span>}
+                {skipped > 0 && <span className="ml-2 text-amber-400">{skipped} skipped</span>}
+              </span>
+            </div>
+            <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-emerald-400 transition-all duration-300"
+                style={{ width: `${passedPct}%` }}
+              />
+              <div
+                className="h-full bg-red-400 transition-all duration-300"
+                style={{ width: `${failedPct}%` }}
+              />
+              <div
+                className="h-full bg-amber-400 transition-all duration-300"
+                style={{ width: `${skippedPct}%` }}
+              />
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Metric cards */}
       {summary && summary.avgDuration !== undefined && (
@@ -429,6 +444,9 @@ function ResultsView({
     groups.set(key, group)
   }
 
+  const passedPct = total ? (passed / total) * 100 : 0
+  const failedPct = total ? (failed / total) * 100 : 0
+
   return (
     <div className="space-y-4">
       {/* Progress bar */}
@@ -444,10 +462,14 @@ function ResultsView({
             )}
           </span>
         </div>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+        <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
           <div
-            className="h-full rounded-full bg-emerald-400 transition-all duration-300"
-            style={{ width: total ? `${(passed / total) * 100}%` : "0%" }}
+            className="h-full bg-emerald-400 transition-all duration-300"
+            style={{ width: `${passedPct}%` }}
+          />
+          <div
+            className="h-full bg-red-400 transition-all duration-300"
+            style={{ width: `${failedPct}%` }}
           />
         </div>
       </div>
