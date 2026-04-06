@@ -3,11 +3,18 @@
 # Two execution modes:
 #   1. Local mode (FEATURES_DIR set): mounted volumes contain features + steps
 #   2. Repo mode (GIT_REPO_URL set): clones a test repo, runs cucumber from inside
+#
+# In both modes the runner injects --format message:/results/cucumber.ndjson
+# and runs stream-results.js in parallel for live result streaming.
 
 set -e
 
 RESULTS_DIR="/results"
 mkdir -p "$RESULTS_DIR"
+
+MESSAGE_FILE="$RESULTS_DIR/cucumber.ndjson"
+rm -f "$MESSAGE_FILE"
+export MESSAGE_FILE
 
 BROWSER="${BROWSER:-chromium}"
 HEADLESS="${HEADLESS:-true}"
@@ -62,17 +69,8 @@ if [ -n "$GIT_REPO_URL" ]; then
   fi
   ln -sfn /runner/node_modules node_modules
 
-  echo ""
-  echo "=== Running cucumber-js ==="
-  echo ""
-
-  # Tell the user's cucumber.js where to write results
-  export RESULTS_FILE="$RESULTS_DIR/cucumber.json"
-
-  set +e
-  /runner/node_modules/.bin/cucumber-js
-  EXIT_CODE=$?
-  set -e
+  CUCUMBER_BIN=/runner/node_modules/.bin/cucumber-js
+  CUCUMBER_ARGS="--format message:$MESSAGE_FILE"
 
 # ---------------------------------------------------------------------------
 # Local mode: features and steps mounted as volumes
@@ -103,42 +101,52 @@ module.exports = {
       "$STEPS_DIR/**/*.js",
     ],
     requireModule: ["ts-node/register"],
-    format: [
-      "summary",
-      "progress",
-      "json:$RESULTS_DIR/cucumber.json",
-    ],
+    format: ["summary", "progress"],
     formatOptions: { snippetInterface: "async-await" },
-    publishQuiet: true,
 $(if [ -n "$TAGS" ]; then echo "    tags: \"$TAGS\","; fi)
   },
 }
 CUCUMBERCFG
 
   cd /runner
-
-  echo ""
-  echo "=== Running cucumber-js ==="
-  echo ""
-
-  set +e
-  npx cucumber-js --config "$CONFIG_FILE"
-  EXIT_CODE=$?
-  set -e
+  CUCUMBER_BIN=/runner/node_modules/.bin/cucumber-js
+  CUCUMBER_ARGS="--config $CONFIG_FILE --format message:$MESSAGE_FILE"
 fi
 
 # ---------------------------------------------------------------------------
-# Parse results (same for both modes)
+# Live result streaming + cucumber execution
 # ---------------------------------------------------------------------------
 echo ""
-echo "=== Parsing Results ==="
+echo "=== Running cucumber-js (live streaming results) ==="
+echo ""
 
-if [ -f "$RESULTS_DIR/cucumber.json" ]; then
-  node /runner/parse-results.js "$RESULTS_DIR/cucumber.json"
-else
-  # No results file means cucumber never actually ran successfully.
-  # Force-fail the run regardless of the underlying exit code.
-  echo "ERROR: cucumber.json was not produced — cucumber did not run successfully" >&2
+# Start the live stream parser in the background. It tails $MESSAGE_FILE,
+# emits @@RESULT@@ lines per scenario as cucumber writes them, and exits
+# cleanly when it sees the testRunFinished event.
+node /runner/stream-results.js "$MESSAGE_FILE" &
+STREAM_PID=$!
+
+# Run cucumber in the foreground
+set +e
+$CUCUMBER_BIN $CUCUMBER_ARGS
+EXIT_CODE=$?
+set -e
+
+# Give the stream parser a moment to process remaining events and exit
+sleep 1
+
+# If the stream parser is still running, force-kill it
+if kill -0 $STREAM_PID 2>/dev/null; then
+  kill $STREAM_PID 2>/dev/null
+fi
+wait $STREAM_PID 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+if [ ! -f "$MESSAGE_FILE" ] || [ ! -s "$MESSAGE_FILE" ]; then
+  echo "ERROR: Cucumber did not produce a message file — run failed" >&2
   if [ "$EXIT_CODE" -eq 0 ]; then
     EXIT_CODE=1
   fi

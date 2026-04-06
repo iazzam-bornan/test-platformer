@@ -10,6 +10,7 @@ RUN npm install --omit=dev && npm cache clean --force
 COPY tsconfig.json ./
 COPY support ./support
 COPY parse-results.js ./
+COPY stream-results.js ./
 COPY run.sh ./
 
 RUN chmod +x /runner/run.sh

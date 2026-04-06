@@ -187,14 +187,14 @@ export function useDockerStatus() {
 export interface TestResult {
   url?: string
   iteration?: number
-  status?: number
+  status?: number | string
   ok?: boolean
   duration?: number
   timestamp?: string
   error?: string
   body?: string
-  // summary fields
-  type?: "summary"
+  // summary or plan
+  type?: "summary" | "plan"
   totalChecks?: number
   passed?: number
   failed?: number
@@ -298,6 +298,9 @@ export function useTestResults(runId: string) {
         const result: TestResult = JSON.parse(event.data)
         if (result.type === "summary") {
           setSummary(result)
+        } else if (result.type === "plan") {
+          // Plan event: metadata, not a real result. The plannedTotal is also
+          // available on the Run object via the API; ignore it here.
         } else {
           setResults((prev) => [...prev, result])
         }

@@ -34,6 +34,12 @@ export interface Run {
   overrides?: RunOverrides
   services: ServiceRunInfo[]
   exitCode?: number
+  /**
+   * Total number of expected test results, declared by the test runner via a
+   * "plan" event before any actual results stream in. Undefined if the runner
+   * could not declare it upfront (e.g. duration-based JMeter tests).
+   */
+  plannedTotal?: number
   preserveOnFailure: boolean
   preserveAlways: boolean
   error?: string

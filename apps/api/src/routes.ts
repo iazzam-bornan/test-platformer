@@ -29,12 +29,13 @@ function toFrontendRun(
       mappedPorts: s.ports,
     })),
     exitCode: state.exitCode,
+    plannedTotal: state.plannedTotal,
     preserveOnFailure: state.config.cleanup?.onFail === "preserve",
     preserveAlways:
       state.config.cleanup?.onPass === "preserve" &&
       state.config.cleanup?.onFail === "preserve",
     error: state.error,
-  }
+  } as Run
 }
 
 // Store scenario metadata alongside runs (the core doesn't know about scenarios)
