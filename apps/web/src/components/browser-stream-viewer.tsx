@@ -27,10 +27,10 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
   useEffect(() => {
     if (!enabled || !streamInfo || !canvasRef.current) return
 
-    // websockify accepts WebSocket connections at any path; use root for max
-    // compatibility (the "/websockify" path is only required behind certain
-    // reverse proxies, not when talking to websockify directly).
-    const url = `ws://${streamInfo.host}:${streamInfo.port}/`
+    // websockify with --web requires connecting to /websockify for the
+    // WebSocket endpoint (the root path serves static files). This matches
+    // what noVNC's standalone vnc.html uses by default.
+    const url = `ws://${streamInfo.host}:${streamInfo.port}/websockify`
     setDebugUrl(url)
 
     setState("connecting")
