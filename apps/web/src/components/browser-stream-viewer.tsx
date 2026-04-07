@@ -50,9 +50,11 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
         streamInfo.interactive && localInteractive ? "0" : "1",
       show_dot: "1",
     })
-    // Use vnc_lite.html — it's the minimal viewer (no sidebar, no controls,
-    // just the canvas). vnc.html is the full UI which clutters the iframe.
-    return `http://${streamInfo.host}:${streamInfo.port}/vnc_lite.html?${params.toString()}`
+    // Use vnc.html — it's the full UI but supports the `resize=scale` URL
+    // param so the canvas fits the iframe. vnc_lite.html doesn't read any
+    // scaling params, leaving you with scrollbars. We hide vnc.html's
+    // control bar via CSS injected at runtime in run.sh.
+    return `http://${streamInfo.host}:${streamInfo.port}/vnc.html?${params.toString()}`
   }, [streamInfo, localInteractive])
 
   if (!enabled) {

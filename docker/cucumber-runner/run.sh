@@ -75,10 +75,16 @@ if [ "$STREAM_BROWSER" = "true" ]; then
   # No window manager: chromium will be the only thing on the X display
   # (combined with --kiosk it fills the entire screen with no chrome).
 
-  # Hide the noVNC status bar so the iframe shows only the remote desktop.
-  # Idempotent: only injects the style block if it isn't already present.
-  if ! grep -q "noVNC_status_bar{display:none" /usr/share/novnc/vnc_lite.html 2>/dev/null; then
-    sed -i 's|</head>|<style>#noVNC_status_bar{display:none !important;}html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;}</style></head>|' /usr/share/novnc/vnc_lite.html
+  # Hide the noVNC chrome so the iframe shows only the remote desktop.
+  # vnc.html: hide the entire control bar anchor (sidebar)
+  # vnc_lite.html: hide the status bar at top
+  # Idempotent: only injects the style block if not already present.
+  STYLE_BLOCK='<style>#noVNC_control_bar_anchor{display:none !important;}#noVNC_status_bar{display:none !important;}html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;}</style></head>'
+  if ! grep -q "noVNC_control_bar_anchor{display:none" /usr/share/novnc/vnc.html 2>/dev/null; then
+    sed -i "s|</head>|$STYLE_BLOCK|" /usr/share/novnc/vnc.html
+  fi
+  if ! grep -q "noVNC_control_bar_anchor{display:none" /usr/share/novnc/vnc_lite.html 2>/dev/null; then
+    sed -i "s|</head>|$STYLE_BLOCK|" /usr/share/novnc/vnc_lite.html
   fi
 
   # Start websockify to bridge noVNC WebSocket → VNC port 5900.

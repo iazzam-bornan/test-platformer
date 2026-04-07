@@ -51,12 +51,12 @@ export async function getBrowser(): Promise<Browser> {
   // SLOW MOTION when streaming so the user can actually watch.
   // Playwright's slowMo adds a delay before every action (click, fill,
   // navigation) so they're visible in the live VNC stream.
-  // Default: 250ms when streaming, 0 otherwise. Override via STREAM_SLOW_MO.
+  // Default: 500ms when streaming, 0 otherwise. Override via STREAM_SLOW_MO.
   const slowMoEnv = process.env.STREAM_SLOW_MO
   const slowMo = slowMoEnv !== undefined
     ? parseInt(slowMoEnv, 10) || 0
     : streamBrowser
-      ? 250
+      ? 500
       : 0
 
   // Chromium-specific args needed to run stably inside Xvfb/tigervnc.
