@@ -652,8 +652,10 @@ export function RunLivePage() {
   const serviceNames = run.services.map((s: (typeof run.services)[0]) => s.name)
 
   // Browser streaming derived flags
+  // Note: `run.config` here is the core RunConfig (mapped from YAML by the
+  // API), so cucumber lives at `test.cucumber`, not `tests.runner.cucumber`.
   const runConfig = run.config as any
-  const cucumberCfg = runConfig?.tests?.runner?.cucumber
+  const cucumberCfg = runConfig?.test?.cucumber
   const hasBrowserStream = Boolean(cucumberCfg?.streamBrowser)
   const streamAvailable = hasBrowserStream && !isTerminal
 
