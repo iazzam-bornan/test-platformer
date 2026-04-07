@@ -105,11 +105,12 @@ export function SettingsDialog() {
 
           <Separator />
 
-          {/* UI: browser stream interactivity */}
+          {/* UI: browser stream */}
           <div className="space-y-2">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Browser stream
             </Label>
+
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="text-xs font-medium">Interactive viewer</p>
@@ -124,6 +125,25 @@ export function SettingsDialog() {
                 checked={ui.browserStreamInteractive}
                 onCheckedChange={(v) =>
                   setUISettings({ browserStreamInteractive: v })
+                }
+              />
+            </div>
+
+            <div className="flex items-start justify-between gap-4 pt-2">
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="text-xs font-medium">Desktop view</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Launch new runs with a full Linux desktop inside the runner
+                  container — window manager, terminal, and file manager
+                  visible alongside the test browser. Useful for poking around
+                  the container while tests run. Applies to{" "}
+                  <span className="font-medium">new runs only</span>.
+                </p>
+              </div>
+              <Switch
+                checked={ui.browserStreamDesktop}
+                onCheckedChange={(v) =>
+                  setUISettings({ browserStreamDesktop: v })
                 }
               />
             </div>

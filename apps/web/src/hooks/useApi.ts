@@ -74,10 +74,22 @@ export function useCreateRun() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (req: CreateRunRequest) => {
+      // Inject UI-side preferences as run overrides. The user toggles these
+      // in Settings (localStorage); we forward them to the API on every
+      // new run so the runner container starts in the right mode.
+      const ui = getUISettings()
+      const enrichedReq: CreateRunRequest = {
+        ...req,
+        overrides: {
+          ...(req.overrides ?? {}),
+          // Only set if the UI flag is on — otherwise let the YAML decide
+          ...(ui.browserStreamDesktop ? { streamDesktop: true } : {}),
+        },
+      }
       const res = await fetch(`${API_URL}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req),
+        body: JSON.stringify(enrichedReq),
       })
       if (!res.ok) {
         const err = await res.json()
@@ -327,14 +339,22 @@ const UI_SETTINGS_KEY = "testplatform:ui-settings"
 export interface UISettings {
   /**
    * When true, the Live Browser viewer forwards mouse/keyboard input to
-   * the streamed browser (on runs where `cucumber.streamInteractive` is also
-   * true in the scenario config). Defaults to false — pure view.
+   * the streamed browser. Defaults to false — pure view.
    */
   browserStreamInteractive: boolean
+  /**
+   * When true, NEW runs created from this UI will launch with desktop
+   * streaming enabled — the runner container will start a window manager,
+   * terminal, and file manager visible inside the live browser tab. The
+   * cucumber tests still run; you just see them inside a real desktop.
+   * Sent as a per-run override at run-creation time.
+   */
+  browserStreamDesktop: boolean
 }
 
 const defaultUISettings: UISettings = {
   browserStreamInteractive: false,
+  browserStreamDesktop: false,
 }
 
 export function getUISettings(): UISettings {

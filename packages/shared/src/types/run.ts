@@ -56,6 +56,14 @@ export interface RunOverrides {
   images?: Record<string, string>
   preserveOnFailure?: boolean
   preserveAlways?: boolean
+  /**
+   * Cucumber stream-related overrides applied at run-creation time.
+   * If a field is set, it overrides the corresponding cucumber.streamX
+   * field in the scenario YAML.
+   */
+  streamBrowser?: boolean
+  streamInteractive?: boolean
+  streamDesktop?: boolean
 }
 
 export interface CreateRunRequest {

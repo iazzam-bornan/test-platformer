@@ -18,6 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     websockify \
     dbus-x11 \
     fluxbox \
+    xterm \
+    pcmanfm \
+    tint2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Hide the noVNC status bar so the iframe shows ONLY the remote desktop.

@@ -60,19 +60,32 @@ export async function getBrowser(): Promise<Browser> {
       : 0
 
   // Chromium-specific args needed to run stably inside Xvfb/tigervnc.
-  // --kiosk launches in fullscreen with no toolbars/tabs/window decoration,
-  // so the iframe sees ONLY the page being tested — no chromium UI, no
-  // desktop background. Combined with no window manager (see run.sh), the
-  // browser fills the entire X display.
-  const chromiumStreamArgs = [
-    "--no-sandbox",
-    "--disable-gpu",
-    "--disable-dev-shm-usage",
-    "--disable-software-rasterizer",
-    "--kiosk",
-    "--window-size=1600,900",
-    "--window-position=0,0",
-  ]
+  //
+  // Browser-only mode (STREAM_DESKTOP=false): kiosk fullscreen, fills the
+  // entire X display. The iframe shows ONLY the page being tested — no
+  // chromium UI, no desktop background.
+  //
+  // Desktop mode (STREAM_DESKTOP=true): no kiosk, smaller window so other
+  // desktop apps (terminal, file manager) are visible alongside the browser.
+  const streamDesktop = process.env.STREAM_DESKTOP === "true"
+  const chromiumStreamArgs = streamDesktop
+    ? [
+        "--no-sandbox",
+        "--disable-gpu",
+        "--disable-dev-shm-usage",
+        "--disable-software-rasterizer",
+        "--window-size=1100,700",
+        "--window-position=460,40",
+      ]
+    : [
+        "--no-sandbox",
+        "--disable-gpu",
+        "--disable-dev-shm-usage",
+        "--disable-software-rasterizer",
+        "--kiosk",
+        "--window-size=1600,900",
+        "--window-position=0,0",
+      ]
 
   switch (name) {
     case "firefox":

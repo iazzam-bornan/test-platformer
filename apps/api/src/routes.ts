@@ -839,6 +839,7 @@ function scenarioToRunConfig(scenario: any, overrides?: any, scenariosDir?: stri
           // Live browser streaming — may be overridden per-run via overrides
           streamBrowser: overrides?.streamBrowser ?? cu.streamBrowser,
           streamInteractive: overrides?.streamInteractive ?? cu.streamInteractive,
+          streamDesktop: overrides?.streamDesktop ?? cu.streamDesktop,
         },
       }
     } else if (runner.command) {

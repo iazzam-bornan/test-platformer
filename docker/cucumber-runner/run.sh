@@ -21,6 +21,7 @@ HEADLESS="${HEADLESS:-true}"
 BASE_URL="${BASE_URL:-http://localhost}"
 STREAM_BROWSER="${STREAM_BROWSER:-false}"
 STREAM_INTERACTIVE="${STREAM_INTERACTIVE:-false}"
+STREAM_DESKTOP="${STREAM_DESKTOP:-false}"
 
 # When browser streaming is enabled, headless must be off.
 if [ "$STREAM_BROWSER" = "true" ]; then
@@ -32,7 +33,7 @@ echo "=== Cucumber + Playwright Test Runner ==="
 echo "Browser:  $BROWSER (headless: $HEADLESS)"
 echo "BaseUrl:  $BASE_URL"
 if [ "$STREAM_BROWSER" = "true" ]; then
-  echo "Stream:   ENABLED (interactive: $STREAM_INTERACTIVE)"
+  echo "Stream:   ENABLED (interactive: $STREAM_INTERACTIVE, desktop: $STREAM_DESKTOP)"
 fi
 if [ -n "$TAGS" ]; then
   echo "Tags:     $TAGS"
@@ -94,6 +95,40 @@ if [ "$STREAM_BROWSER" = "true" ]; then
   websockify --web /usr/share/novnc 6080 localhost:5900 \
     > /tmp/websockify.log 2>&1 &
   VNC_PIDS="$! $VNC_PIDS"
+
+  # ---------------------------------------------------------------------
+  # Desktop mode: launch a window manager + terminal + file manager so the
+  # noVNC stream looks like a real Linux desktop, not just a fullscreen
+  # browser window. Skipped when STREAM_DESKTOP=false to keep the stream
+  # clean for the chromium-only case.
+  # ---------------------------------------------------------------------
+  if [ "$STREAM_DESKTOP" = "true" ]; then
+    echo ""
+    echo "=== Starting desktop environment ==="
+
+    # Window manager
+    fluxbox -display :99 > /tmp/fluxbox.log 2>&1 &
+    VNC_PIDS="$! $VNC_PIDS"
+
+    # Wait for fluxbox to be ready
+    sleep 1
+
+    # Lightweight panel/taskbar
+    tint2 -c /dev/null > /tmp/tint2.log 2>&1 &
+    VNC_PIDS="$! $VNC_PIDS"
+
+    # Terminal — useful for poking around the container
+    xterm -fa 'Monospace' -fs 11 -bg '#1e1e1e' -fg '#d4d4d4' \
+      -geometry 90x24+20+50 \
+      > /tmp/xterm.log 2>&1 &
+    VNC_PIDS="$! $VNC_PIDS"
+
+    # File manager — opens at /project so the cloned tests are immediately visible
+    pcmanfm /project > /tmp/pcmanfm.log 2>&1 &
+    VNC_PIDS="$! $VNC_PIDS"
+
+    echo "Desktop started (fluxbox + tint2 + xterm + pcmanfm)"
+  fi
 
   echo "VNC stack started (DISPLAY=$DISPLAY, noVNC on :6080)"
   sleep 1

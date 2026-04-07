@@ -105,6 +105,7 @@ const cucumberConfigSchema = z.object({
   // Live browser streaming (VNC)
   streamBrowser: z.boolean().optional(),
   streamInteractive: z.boolean().optional(),
+  streamDesktop: z.boolean().optional(),
 }).refine(
   (c) => (c.features !== undefined) !== (c.repo !== undefined),
   { message: "Cucumber config must have exactly one of 'features' (local) or 'repo' (remote), not both" }
