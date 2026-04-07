@@ -442,14 +442,13 @@ export function createRunRoutes(platform: TestPlatform): Hono {
     // Pick first IPv4 binding (HostIp doesn't contain ":")
     const ipv4 = bindings.find((b) => b.HostIp && !b.HostIp.includes(":")) ?? bindings[0]
     const port = parseInt(ipv4.HostPort, 10)
-    // Use "localhost" rather than 127.0.0.1 — some browser/origin behaviors
-    // prefer hostname-form addresses for WebSocket cross-origin negotiation.
+    // Always use 127.0.0.1: on Windows, "localhost" can resolve to ::1
+    // (IPv6) first, but Docker binds the port only on 127.0.0.1 (IPv4),
+    // producing ERR_EMPTY_RESPONSE in browsers. Stick with the literal IP.
     const host =
       !ipv4.HostIp || ipv4.HostIp === "0.0.0.0" || ipv4.HostIp === "::"
-        ? "localhost"
-        : ipv4.HostIp === "127.0.0.1"
-          ? "localhost"
-          : ipv4.HostIp
+        ? "127.0.0.1"
+        : ipv4.HostIp
 
     console.log(`[BROWSER-STREAM] resolved ${host}:${port}`)
 

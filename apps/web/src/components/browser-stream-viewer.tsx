@@ -1,8 +1,5 @@
-import { useEffect, useRef, useState } from "react"
-import RFB from "@novnc/novnc/lib/rfb"
+import { useMemo } from "react"
 import { useBrowserStream } from "../hooks/useApi"
-
-type StreamState = "waiting" | "connecting" | "connected" | "disconnected" | "error"
 
 interface Props {
   runId: string
@@ -15,91 +12,44 @@ interface Props {
   localInteractive: boolean
 }
 
+/**
+ * BrowserStreamViewer
+ *
+ * Embeds the noVNC standalone vnc.html that's served by websockify inside
+ * the test runner container. Going through the iframe (rather than instantiating
+ * `RFB` directly in our React tree) sidesteps the cross-origin WebSocket
+ * handshake problem: the iframe content is loaded from the same origin as
+ * the VNC server, so its WebSocket connection is same-origin.
+ *
+ * The trade-off: less programmatic control over the viewer. We pass options
+ * via URL params, but we can't, e.g., trigger disconnect from outside.
+ */
 export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props) {
-  const canvasRef = useRef<HTMLDivElement>(null)
-  const rfbRef = useRef<any>(null)
-  const [state, setState] = useState<StreamState>("waiting")
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [debugUrl, setDebugUrl] = useState<string | null>(null)
+  const { data: streamInfo, error: streamError, isLoading } = useBrowserStream(
+    runId,
+    enabled
+  )
 
-  const { data: streamInfo, error: streamError } = useBrowserStream(runId, enabled)
-
-  useEffect(() => {
-    if (!enabled || !streamInfo || !canvasRef.current) return
-
-    // websockify with --web requires connecting to /websockify for the
-    // WebSocket endpoint (the root path serves static files). This matches
-    // what noVNC's standalone vnc.html uses by default.
-    const url = `ws://${streamInfo.host}:${streamInfo.port}/websockify`
-    setDebugUrl(url)
-
-    setState("connecting")
-    setErrorMsg(null)
-
-    let rfb: any
-    try {
-      rfb = new RFB(canvasRef.current, url, {
-        // Pass both subprotocols so noVNC can negotiate with whichever the
-        // server prefers. Older websockify only supports "base64".
-        wsProtocols: ["binary", "base64"],
-      })
-      // Scale to fit the container
-      rfb.scaleViewport = true
-      rfb.resizeSession = false
-      // Control whether input is forwarded. We respect BOTH the server-side
-      // setting (streamInfo.interactive) AND the client-side toggle.
-      const allowInput = streamInfo.interactive && localInteractive
-      rfb.viewOnly = !allowInput
-
-      rfb.addEventListener("connect", () => {
-        // eslint-disable-next-line no-console
-        console.log("[BrowserStreamViewer] connected to", url)
-        setState("connected")
-      })
-      rfb.addEventListener("disconnect", (e: any) => {
-        // eslint-disable-next-line no-console
-        console.log("[BrowserStreamViewer] disconnected:", e?.detail)
-        setState("disconnected")
-        if (e?.detail?.clean === false) {
-          setErrorMsg(e.detail?.reason || "Connection lost")
-        } else {
-          setErrorMsg("Disconnected")
-        }
-      })
-      rfb.addEventListener("securityfailure", (e: any) => {
-        // eslint-disable-next-line no-console
-        console.log("[BrowserStreamViewer] security failure:", e?.detail)
-        setState("error")
-        setErrorMsg(`Security failure: ${e.detail?.reason || "unknown"}`)
-      })
-
-      rfbRef.current = rfb
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.log("[BrowserStreamViewer] connect threw:", err)
-      setState("error")
-      setErrorMsg(err instanceof Error ? err.message : "Failed to connect")
-    }
-
-    return () => {
-      if (rfb) {
-        try {
-          rfb.disconnect()
-        } catch {
-          // ignore
-        }
-      }
-      rfbRef.current = null
-    }
-  }, [enabled, streamInfo, localInteractive])
-
-  // Update viewOnly live if the toggle changes while connected
-  useEffect(() => {
-    if (rfbRef.current && streamInfo) {
-      const allowInput = streamInfo.interactive && localInteractive
-      rfbRef.current.viewOnly = !allowInput
-    }
-  }, [localInteractive, streamInfo])
+  // Build the noVNC URL. We let the iframe's content do the WebSocket
+  // connection itself — that way the WS handshake is same-origin.
+  // noVNC vnc.html supports these query params:
+  //   host, port, path, autoconnect, view_only, resize, reconnect
+  const iframeSrc = useMemo(() => {
+    if (!streamInfo) return null
+    const params = new URLSearchParams({
+      host: streamInfo.host,
+      port: String(streamInfo.port),
+      path: streamInfo.path || "websockify",
+      autoconnect: "1",
+      reconnect: "1",
+      resize: "scale",
+      // Read-only is determined by the AND of server-side and client-side flags
+      view_only:
+        streamInfo.interactive && localInteractive ? "0" : "1",
+      show_dot: "1",
+    })
+    return `http://${streamInfo.host}:${streamInfo.port}/vnc.html?${params.toString()}`
+  }, [streamInfo, localInteractive])
 
   if (!enabled) {
     return null
@@ -111,21 +61,17 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
         <div className="flex items-center gap-2 text-xs">
           <span
             className={`h-2 w-2 rounded-full ${
-              state === "connected"
+              streamInfo
                 ? "animate-pulse bg-emerald-400"
-                : state === "connecting"
+                : isLoading
                   ? "animate-pulse bg-amber-400"
-                  : state === "error"
-                    ? "bg-red-400"
-                    : "bg-muted-foreground"
+                  : "bg-muted-foreground"
             }`}
           />
           <span className="font-mono text-muted-foreground">
-            {state === "waiting" && "Waiting for test container..."}
-            {state === "connecting" && "Connecting..."}
-            {state === "connected" && "Live"}
-            {state === "disconnected" && "Disconnected"}
-            {state === "error" && "Error"}
+            {!streamInfo && isLoading && "Waiting for test container..."}
+            {!streamInfo && !isLoading && "Stream unavailable"}
+            {streamInfo && "Live"}
           </span>
           {streamInfo && !streamInfo.interactive && (
             <span className="font-mono text-[10px] text-muted-foreground/70">
@@ -138,9 +84,9 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
             </span>
           )}
         </div>
-        {streamInfo && (
+        {iframeSrc && (
           <a
-            href={`http://${streamInfo.host}:${streamInfo.port}/vnc.html?host=${streamInfo.host}&port=${streamInfo.port}&autoconnect=1`}
+            href={iframeSrc}
             target="_blank"
             rel="noreferrer"
             className="font-mono text-[10px] text-muted-foreground hover:text-foreground"
@@ -150,24 +96,24 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
         )}
       </div>
 
-      {(streamError || errorMsg) && (
+      {streamError && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
-          <div>{errorMsg || (streamError as Error)?.message || "Stream unavailable"}</div>
-          {debugUrl && (
-            <div className="mt-1 font-mono text-[10px] text-amber-400/70">
-              tried: {debugUrl}
-            </div>
-          )}
+          {(streamError as Error)?.message || "Stream unavailable"}
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border bg-black">
-        <div
-          ref={canvasRef}
-          className="h-[720px] w-full"
-          style={{ touchAction: "none" }}
-        />
-      </div>
+      {iframeSrc && (
+        <div className="overflow-hidden rounded-lg border bg-black">
+          <iframe
+            key={iframeSrc}
+            src={iframeSrc}
+            title="Live browser stream"
+            className="block h-[720px] w-full"
+            allow="clipboard-read; clipboard-write"
+            sandbox="allow-scripts allow-same-origin allow-forms"
+          />
+        </div>
+      )}
     </div>
   )
 }
