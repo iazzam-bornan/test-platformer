@@ -76,9 +76,15 @@ if [ "$STREAM_BROWSER" = "true" ]; then
   fluxbox -display :99 > /tmp/fluxbox.log 2>&1 &
   VNC_PIDS="$! $VNC_PIDS"
 
-  # Start websockify to bridge noVNC WebSocket → VNC port 5900
-  # --web serves the noVNC static files (unused by us, but useful for debugging)
-  websockify --web /usr/share/novnc 6080 localhost:5900 \
+  # Start websockify to bridge noVNC WebSocket → VNC port 5900.
+  #
+  # --no-check-origin: required because the platform UI is served from a
+  #   different origin (e.g. http://localhost:5173) than the websockify
+  #   server (e.g. http://127.0.0.1:6080), so the default origin check
+  #   would reject our WebSocket handshake.
+  # --web: also serves the noVNC static files (useful for direct debugging
+  #   via http://<host>:6080/vnc.html).
+  websockify --web /usr/share/novnc --no-check-origin 6080 localhost:5900 \
     > /tmp/websockify.log 2>&1 &
   VNC_PIDS="$! $VNC_PIDS"
 
