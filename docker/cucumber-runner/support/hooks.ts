@@ -3,6 +3,7 @@ import {
   After,
   BeforeAll,
   BeforeStep,
+  AfterStep,
   AfterAll,
   Status,
   ITestCaseHookParameter,
@@ -10,21 +11,58 @@ import {
 import * as fs from "fs"
 import { CustomWorld, getBrowser, closeBrowser, createRequestContext } from "./world"
 
-// File-based pause flag. The platform API touches this file via `docker exec`
-// when the user clicks Pause; the BeforeStep hook polls for it and sleeps
-// while it exists. Removing the file resumes execution.
+// File-based control flags. The platform API touches/removes these via
+// `docker exec` based on which UI button the user clicks. The BeforeStep
+// and AfterStep hooks check for them.
+//
+//   PAUSE_FLAG     = test is paused; BeforeStep blocks while it exists
+//   STEP_FLAG      = "step over" requested; let one step run, then re-pause
+//   INSPECTOR_FLAG = open Playwright Inspector before the next step
 const PAUSE_FLAG = "/tmp/cucumber-pause.flag"
+const STEP_FLAG = "/tmp/cucumber-step.flag"
+const INSPECTOR_FLAG = "/tmp/cucumber-inspector.flag"
 
 // BeforeStep timeout is very long so the step can wait indefinitely while
 // paused. Each step's own timeout (default 5s) only kicks in once the step
 // body actually starts running.
-BeforeStep({ timeout: 60 * 60 * 1000 }, async function () {
+BeforeStep({ timeout: 60 * 60 * 1000 }, async function (this: CustomWorld) {
   if (process.env.STREAM_BROWSER !== "true") return
-  if (!fs.existsSync(PAUSE_FLAG)) return
-  // Loop with a short poll interval
+
+  // 1. Block while paused — but if a Step was requested, exit the loop
+  //    early so this single step can run.
   while (fs.existsSync(PAUSE_FLAG)) {
+    if (fs.existsSync(STEP_FLAG)) break
     await new Promise((r) => setTimeout(r, 200))
   }
+
+  // 2. If the user requested the Playwright Inspector, open it. This
+  //    blocks until the user clicks Resume IN the inspector window.
+  if (fs.existsSync(INSPECTOR_FLAG)) {
+    try {
+      fs.unlinkSync(INSPECTOR_FLAG)
+    } catch {}
+    if (this.page) {
+      try {
+        await this.page.pause()
+      } catch {
+        // Inspector launch can fail if the page is detached etc.; ignore
+      }
+    }
+  }
+})
+
+// AfterStep: handle the "step over" one-shot. If a step was triggered
+// while paused, re-arm the pause flag so we stop at the next step.
+AfterStep({ timeout: 60 * 1000 }, async function () {
+  if (process.env.STREAM_BROWSER !== "true") return
+  if (!fs.existsSync(STEP_FLAG)) return
+  try {
+    fs.unlinkSync(STEP_FLAG)
+  } catch {}
+  // Re-create the pause flag so the next BeforeStep blocks again
+  try {
+    fs.writeFileSync(PAUSE_FLAG, "")
+  } catch {}
 })
 
 BeforeAll({ timeout: 60_000 }, async function () {

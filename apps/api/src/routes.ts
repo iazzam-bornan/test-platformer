@@ -556,11 +556,19 @@ export function createRunRoutes(platform: TestPlatform): Hono {
     const containerId = ids["test-runner"]
     if (!containerId) return c.json({ error: "Test runner not found" }, 404)
 
+    // Remove BOTH flags so a stale step flag doesn't immediately re-pause
     const { spawn } = await import("child_process")
     const result = await new Promise<{ ok: boolean }>((resolve) => {
       const proc = spawn(
         "docker",
-        ["exec", containerId, "rm", "-f", "/tmp/cucumber-pause.flag"],
+        [
+          "exec",
+          containerId,
+          "rm",
+          "-f",
+          "/tmp/cucumber-pause.flag",
+          "/tmp/cucumber-step.flag",
+        ],
         { shell: false, stdio: ["ignore", "pipe", "pipe"] }
       )
       proc.on("close", (code) => resolve({ ok: code === 0 }))
@@ -569,6 +577,67 @@ export function createRunRoutes(platform: TestPlatform): Hono {
 
     if (!result.ok) return c.json({ error: "Failed to resume" }, 500)
     return c.json({ data: { paused: false } })
+  })
+
+  // Step over: run exactly one step from a paused state, then re-pause.
+  // Sets the step flag — BeforeStep sees it and exits its wait loop;
+  // AfterStep removes the step flag and re-creates the pause flag.
+  routes.post("/:id/browser-stream/step", async (c) => {
+    const id = c.req.param("id")
+    const { getContainerIds } = await import("@testplatform/core/docker")
+    const ids = await getContainerIds(`tp-${id}`)
+    const containerId = ids["test-runner"]
+    if (!containerId) return c.json({ error: "Test runner not found" }, 404)
+
+    const { spawn } = await import("child_process")
+    const result = await new Promise<{ ok: boolean }>((resolve) => {
+      const proc = spawn(
+        "docker",
+        [
+          "exec",
+          containerId,
+          "sh",
+          "-c",
+          // touch step flag, then we leave the pause flag in place; the
+          // BeforeStep wait loop checks for step flag every 200ms and
+          // breaks out of the wait when it appears.
+          "touch /tmp/cucumber-step.flag && touch /tmp/cucumber-pause.flag",
+        ],
+        { shell: false, stdio: ["ignore", "pipe", "pipe"] }
+      )
+      proc.on("close", (code) => resolve({ ok: code === 0 }))
+      proc.on("error", () => resolve({ ok: false }))
+    })
+
+    if (!result.ok) return c.json({ error: "Failed to step" }, 500)
+    return c.json({ data: { stepping: true } })
+  })
+
+  // Open the Playwright Inspector before the next step. The inspector is
+  // a separate window that opens on the test runner's X display, so it
+  // shows up inside the noVNC stream alongside the test browser. Resume
+  // is then driven from inside the inspector window itself — there's no
+  // public Playwright API to release page.pause() from the outside.
+  routes.post("/:id/browser-stream/inspector", async (c) => {
+    const id = c.req.param("id")
+    const { getContainerIds } = await import("@testplatform/core/docker")
+    const ids = await getContainerIds(`tp-${id}`)
+    const containerId = ids["test-runner"]
+    if (!containerId) return c.json({ error: "Test runner not found" }, 404)
+
+    const { spawn } = await import("child_process")
+    const result = await new Promise<{ ok: boolean }>((resolve) => {
+      const proc = spawn(
+        "docker",
+        ["exec", containerId, "touch", "/tmp/cucumber-inspector.flag"],
+        { shell: false, stdio: ["ignore", "pipe", "pipe"] }
+      )
+      proc.on("close", (code) => resolve({ ok: code === 0 }))
+      proc.on("error", () => resolve({ ok: false }))
+    })
+
+    if (!result.ok) return c.json({ error: "Failed to open inspector" }, 500)
+    return c.json({ data: { inspector: true } })
   })
 
   // Debug: fetch the websockify log from inside the test-runner container.

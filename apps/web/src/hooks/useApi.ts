@@ -228,6 +228,48 @@ export function useResumeRun() {
 }
 
 /**
+ * Step over: run exactly one step from a paused state, then re-pause.
+ */
+export function useStepRun() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (runId: string) => {
+      const res = await fetch(`${API_URL}/runs/${runId}/browser-stream/step`, {
+        method: "POST",
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to step")
+      }
+      return res.json()
+    },
+    onSuccess: (_, runId) => {
+      queryClient.invalidateQueries({ queryKey: ["pause-status", runId] })
+    },
+  })
+}
+
+/**
+ * Open the Playwright Inspector before the next step. The inspector window
+ * appears inside the noVNC stream — Resume is driven from inside that window.
+ */
+export function useOpenInspector() {
+  return useMutation({
+    mutationFn: async (runId: string) => {
+      const res = await fetch(
+        `${API_URL}/runs/${runId}/browser-stream/inspector`,
+        { method: "POST" }
+      )
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to open inspector")
+      }
+      return res.json()
+    },
+  })
+}
+
+/**
  * Fetch the live browser stream WebSocket address for a run. Polls until the
  * test-runner container's websockify is responsive, then stops. Only
  * meaningful for runs with cucumber.streamBrowser=true.

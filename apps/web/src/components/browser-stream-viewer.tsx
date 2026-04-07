@@ -3,6 +3,8 @@ import {
   useBrowserStream,
   usePauseRun,
   useResumeRun,
+  useStepRun,
+  useOpenInspector,
   usePauseStatus,
 } from "../hooks/useApi"
 import { Button } from "@workspace/ui/components/button"
@@ -42,23 +44,31 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
   const paused = pauseStatus?.paused ?? false
   const pauseRun = usePauseRun()
   const resumeRun = useResumeRun()
+  const stepRun = useStepRun()
+  const openInspector = useOpenInspector()
 
   const handlePause = async () => {
     try {
       await pauseRun.mutateAsync(runId)
-      // Status query will refetch via invalidation in the mutation hook
-    } catch {
-      // mutation error already surfaced via .isError
-    }
+    } catch {}
   }
 
   const handleResume = async () => {
     try {
       await resumeRun.mutateAsync(runId)
-      // Status query will refetch via invalidation in the mutation hook
-    } catch {
-      // mutation error already surfaced via .isError
-    }
+    } catch {}
+  }
+
+  const handleStep = async () => {
+    try {
+      await stepRun.mutateAsync(runId)
+    } catch {}
+  }
+
+  const handleInspector = async () => {
+    try {
+      await openInspector.mutateAsync(runId)
+    } catch {}
   }
 
   // Build the noVNC URL. We let the iframe's content do the WebSocket
@@ -131,15 +141,27 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
           {streamInfo && (
             <>
               {paused ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 gap-1.5 text-[10px]"
-                  onClick={handleResume}
-                  disabled={resumeRun.isPending}
-                >
-                  {resumeRun.isPending ? "Resuming..." : "▶ Resume"}
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1.5 text-[10px]"
+                    onClick={handleStep}
+                    disabled={stepRun.isPending}
+                    title="Run one step then pause again"
+                  >
+                    {stepRun.isPending ? "Stepping..." : "⏭ Step"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1.5 text-[10px]"
+                    onClick={handleResume}
+                    disabled={resumeRun.isPending}
+                  >
+                    {resumeRun.isPending ? "Resuming..." : "▶ Resume"}
+                  </Button>
+                </>
               ) : (
                 <Button
                   size="sm"
@@ -151,6 +173,16 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
                   {pauseRun.isPending ? "Pausing..." : "⏸ Pause"}
                 </Button>
               )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1.5 text-[10px]"
+                onClick={handleInspector}
+                disabled={openInspector.isPending}
+                title="Open the Playwright Inspector inside the streamed view (resume from inside the inspector window)"
+              >
+                {openInspector.isPending ? "Opening..." : "🔍 Inspector"}
+              </Button>
               <a
                 href={iframeSrc ?? "#"}
                 target="_blank"
