@@ -500,6 +500,53 @@ export function createRunRoutes(platform: TestPlatform): Hono {
     })
   })
 
+  // Pause/resume the cucumber test runner. Touches/removes a flag file
+  // inside the test-runner container; the BeforeStep hook polls for it
+  // and sleeps while it exists. Pause takes effect at the next step.
+  routes.post("/:id/browser-stream/pause", async (c) => {
+    const id = c.req.param("id")
+    const { getContainerIds } = await import("@testplatform/core/docker")
+    const ids = await getContainerIds(`tp-${id}`)
+    const containerId = ids["test-runner"]
+    if (!containerId) return c.json({ error: "Test runner not found" }, 404)
+
+    const { spawn } = await import("child_process")
+    const result = await new Promise<{ ok: boolean }>((resolve) => {
+      const proc = spawn(
+        "docker",
+        ["exec", containerId, "touch", "/tmp/cucumber-pause.flag"],
+        { shell: false, stdio: ["ignore", "pipe", "pipe"] }
+      )
+      proc.on("close", (code) => resolve({ ok: code === 0 }))
+      proc.on("error", () => resolve({ ok: false }))
+    })
+
+    if (!result.ok) return c.json({ error: "Failed to pause" }, 500)
+    return c.json({ data: { paused: true } })
+  })
+
+  routes.post("/:id/browser-stream/resume", async (c) => {
+    const id = c.req.param("id")
+    const { getContainerIds } = await import("@testplatform/core/docker")
+    const ids = await getContainerIds(`tp-${id}`)
+    const containerId = ids["test-runner"]
+    if (!containerId) return c.json({ error: "Test runner not found" }, 404)
+
+    const { spawn } = await import("child_process")
+    const result = await new Promise<{ ok: boolean }>((resolve) => {
+      const proc = spawn(
+        "docker",
+        ["exec", containerId, "rm", "-f", "/tmp/cucumber-pause.flag"],
+        { shell: false, stdio: ["ignore", "pipe", "pipe"] }
+      )
+      proc.on("close", (code) => resolve({ ok: code === 0 }))
+      proc.on("error", () => resolve({ ok: false }))
+    })
+
+    if (!result.ok) return c.json({ error: "Failed to resume" }, 500)
+    return c.json({ data: { paused: false } })
+  })
+
   // Debug: fetch the websockify log from inside the test-runner container.
   // Useful for figuring out why a WebSocket upgrade is being rejected.
   routes.get("/:id/browser-stream/log", async (c) => {

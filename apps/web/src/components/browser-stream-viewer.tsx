@@ -1,5 +1,6 @@
-import { useMemo } from "react"
-import { useBrowserStream } from "../hooks/useApi"
+import { useMemo, useState } from "react"
+import { useBrowserStream, usePauseRun, useResumeRun } from "../hooks/useApi"
+import { Button } from "@workspace/ui/components/button"
 
 interface Props {
   runId: string
@@ -29,6 +30,27 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
     runId,
     enabled
   )
+  const [paused, setPaused] = useState(false)
+  const pauseRun = usePauseRun()
+  const resumeRun = useResumeRun()
+
+  const handlePause = async () => {
+    try {
+      await pauseRun.mutateAsync(runId)
+      setPaused(true)
+    } catch {
+      // mutation error already surfaced via .isError
+    }
+  }
+
+  const handleResume = async () => {
+    try {
+      await resumeRun.mutateAsync(runId)
+      setPaused(false)
+    } catch {
+      // mutation error already surfaced via .isError
+    }
+  }
 
   // Build the noVNC URL. We let the iframe's content do the WebSocket
   // connection itself — that way the WS handshake is same-origin.
@@ -90,17 +112,47 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
               · interactive (click inside the viewer to focus)
             </span>
           )}
+          {streamInfo && paused && (
+            <span className="font-mono text-[10px] text-amber-400">
+              · PAUSED (will resume on next step)
+            </span>
+          )}
         </div>
-        {iframeSrc && (
-          <a
-            href={iframeSrc}
-            target="_blank"
-            rel="noreferrer"
-            className="font-mono text-[10px] text-muted-foreground hover:text-foreground"
-          >
-            Open in new tab ↗
-          </a>
-        )}
+        <div className="flex items-center gap-2">
+          {streamInfo && (
+            <>
+              {paused ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 text-[10px]"
+                  onClick={handleResume}
+                  disabled={resumeRun.isPending}
+                >
+                  {resumeRun.isPending ? "Resuming..." : "▶ Resume"}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 text-[10px]"
+                  onClick={handlePause}
+                  disabled={pauseRun.isPending}
+                >
+                  {pauseRun.isPending ? "Pausing..." : "⏸ Pause"}
+                </Button>
+              )}
+              <a
+                href={iframeSrc ?? "#"}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                Open in new tab ↗
+              </a>
+            </>
+          )}
+        </div>
       </div>
 
       {streamError && (

@@ -1,5 +1,31 @@
-import { Before, After, BeforeAll, AfterAll, Status, ITestCaseHookParameter } from "@cucumber/cucumber"
+import {
+  Before,
+  After,
+  BeforeAll,
+  BeforeStep,
+  AfterAll,
+  Status,
+  ITestCaseHookParameter,
+} from "@cucumber/cucumber"
+import * as fs from "fs"
 import { CustomWorld, getBrowser, closeBrowser, createRequestContext } from "./world"
+
+// File-based pause flag. The platform API touches this file via `docker exec`
+// when the user clicks Pause; the BeforeStep hook polls for it and sleeps
+// while it exists. Removing the file resumes execution.
+const PAUSE_FLAG = "/tmp/cucumber-pause.flag"
+
+// BeforeStep timeout is very long so the step can wait indefinitely while
+// paused. Each step's own timeout (default 5s) only kicks in once the step
+// body actually starts running.
+BeforeStep({ timeout: 60 * 60 * 1000 }, async function () {
+  if (process.env.STREAM_BROWSER !== "true") return
+  if (!fs.existsSync(PAUSE_FLAG)) return
+  // Loop with a short poll interval
+  while (fs.existsSync(PAUSE_FLAG)) {
+    await new Promise((r) => setTimeout(r, 200))
+  }
+})
 
 BeforeAll({ timeout: 60_000 }, async function () {
   await getBrowser()

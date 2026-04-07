@@ -163,6 +163,43 @@ export interface BrowserStreamInfo {
 }
 
 /**
+ * Pause the cucumber test runner at the next step boundary.
+ * Only meaningful for runs with cucumber.streamBrowser=true.
+ */
+export function usePauseRun() {
+  return useMutation({
+    mutationFn: async (runId: string) => {
+      const res = await fetch(`${API_URL}/runs/${runId}/browser-stream/pause`, {
+        method: "POST",
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to pause")
+      }
+      return res.json()
+    },
+  })
+}
+
+/**
+ * Resume a paused cucumber test runner.
+ */
+export function useResumeRun() {
+  return useMutation({
+    mutationFn: async (runId: string) => {
+      const res = await fetch(`${API_URL}/runs/${runId}/browser-stream/resume`, {
+        method: "POST",
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to resume")
+      }
+      return res.json()
+    },
+  })
+}
+
+/**
  * Fetch the live browser stream WebSocket address for a run. Polls until the
  * test-runner container's websockify is responsive, then stops. Only
  * meaningful for runs with cucumber.streamBrowser=true.
