@@ -110,7 +110,7 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
             key={iframeSrc}
             src={iframeSrc}
             title="Live browser stream"
-            className="block h-[720px] w-full"
+            className="block h-[calc(100vh-220px)] min-h-[600px] w-full"
             allow="clipboard-read; clipboard-write"
             sandbox="allow-scripts allow-same-origin allow-forms"
           />

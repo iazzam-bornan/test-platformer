@@ -53,10 +53,10 @@ if [ "$STREAM_BROWSER" = "true" ]; then
   # Start Xtigervnc on display :99 — combined X server + VNC listener on 5900
   # -SecurityTypes None: no password (safe: port is docker-network internal,
   #  the platform API is the only thing that talks to it via proxy)
-  # -geometry: browser window size
+  # -geometry: virtual display size; should match the chromium --window-size
   Xtigervnc :99 \
     -SecurityTypes None \
-    -geometry 1280x720 \
+    -geometry 1600x900 \
     -depth 24 \
     -rfbport 5900 \
     -localhost no \

@@ -48,30 +48,42 @@ export async function getBrowser(): Promise<Browser> {
   // When streaming, non-headless is required regardless of HEADLESS env.
   const headless = streamBrowser ? false : process.env.HEADLESS !== "false"
 
+  // SLOW MOTION when streaming so the user can actually watch.
+  // Playwright's slowMo adds a delay before every action (click, fill,
+  // navigation) so they're visible in the live VNC stream.
+  // Default: 250ms when streaming, 0 otherwise. Override via STREAM_SLOW_MO.
+  const slowMoEnv = process.env.STREAM_SLOW_MO
+  const slowMo = slowMoEnv !== undefined
+    ? parseInt(slowMoEnv, 10) || 0
+    : streamBrowser
+      ? 250
+      : 0
+
   // Chromium-specific args needed to run stably inside Xvfb/tigervnc
   const chromiumStreamArgs = [
     "--no-sandbox",
     "--disable-gpu",
     "--disable-dev-shm-usage",
     "--disable-software-rasterizer",
-    "--window-size=1280,720",
+    "--window-size=1600,900",
     "--start-maximized",
   ]
 
   switch (name) {
     case "firefox":
-      _browser = await firefox.launch({ headless })
+      _browser = await firefox.launch({ headless, slowMo })
       break
     case "webkit":
       // Webkit under X11/Xvfb is upstream-experimental and may render poorly.
       // We still launch it so tests execute, but the stream may be blank or
       // glitchy for complex pages.
-      _browser = await webkit.launch({ headless })
+      _browser = await webkit.launch({ headless, slowMo })
       break
     case "chromium":
     default:
       _browser = await chromium.launch({
         headless,
+        slowMo,
         args: streamBrowser ? chromiumStreamArgs : [],
       })
       break
