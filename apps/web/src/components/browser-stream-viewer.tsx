@@ -45,9 +45,10 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
       // Both names — vnc.html uses `resize`, vnc_lite.html uses `scale_viewport`
       resize: "scale",
       scale_viewport: "true",
-      // Read-only is determined by the AND of server-side and client-side flags
-      view_only:
-        streamInfo.interactive && localInteractive ? "0" : "1",
+      // The UI settings toggle is the source of truth. The scenario YAML's
+      // streamInteractive becomes the *default* for the toggle, but the
+      // user's local choice always wins.
+      view_only: localInteractive ? "0" : "1",
       show_dot: "1",
     })
     // Use vnc.html — it's the full UI but supports the `resize=scale` URL
@@ -79,14 +80,14 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
             {!streamInfo && !isLoading && "Stream unavailable"}
             {streamInfo && "Live"}
           </span>
-          {streamInfo && !streamInfo.interactive && (
+          {streamInfo && !localInteractive && (
             <span className="font-mono text-[10px] text-muted-foreground/70">
-              · read-only (disabled in scenario config)
+              · read-only (enable in Settings)
             </span>
           )}
-          {streamInfo && streamInfo.interactive && !localInteractive && (
-            <span className="font-mono text-[10px] text-muted-foreground/70">
-              · read-only (disabled in UI settings)
+          {streamInfo && localInteractive && (
+            <span className="font-mono text-[10px] text-amber-400/70">
+              · interactive (click inside the viewer to focus)
             </span>
           )}
         </div>
@@ -115,8 +116,11 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
             src={iframeSrc}
             title="Live browser stream"
             className="block h-[calc(100vh-220px)] min-h-[600px] w-full"
-            allow="clipboard-read; clipboard-write"
-            sandbox="allow-scripts allow-same-origin allow-forms"
+            allow="clipboard-read; clipboard-write; fullscreen"
+            // No sandbox: noVNC needs full access to dispatch keyboard
+            // events to its WebSocket, plus we trust the runner image
+            // (we built it). With sandbox the iframe can't focus or
+            // forward keystrokes.
           />
         </div>
       )}
