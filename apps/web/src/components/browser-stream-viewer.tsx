@@ -48,7 +48,9 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
         streamInfo.interactive && localInteractive ? "0" : "1",
       show_dot: "1",
     })
-    return `http://${streamInfo.host}:${streamInfo.port}/vnc.html?${params.toString()}`
+    // Use vnc_lite.html — it's the minimal viewer (no sidebar, no controls,
+    // just the canvas). vnc.html is the full UI which clutters the iframe.
+    return `http://${streamInfo.host}:${streamInfo.port}/vnc_lite.html?${params.toString()}`
   }, [streamInfo, localInteractive])
 
   if (!enabled) {
