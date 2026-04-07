@@ -42,7 +42,9 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
       path: streamInfo.path || "websockify",
       autoconnect: "1",
       reconnect: "1",
+      // Both names — vnc.html uses `resize`, vnc_lite.html uses `scale_viewport`
       resize: "scale",
+      scale_viewport: "true",
       // Read-only is determined by the AND of server-side and client-side flags
       view_only:
         streamInfo.interactive && localInteractive ? "0" : "1",

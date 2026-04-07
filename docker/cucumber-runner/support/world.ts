@@ -59,14 +59,19 @@ export async function getBrowser(): Promise<Browser> {
       ? 250
       : 0
 
-  // Chromium-specific args needed to run stably inside Xvfb/tigervnc
+  // Chromium-specific args needed to run stably inside Xvfb/tigervnc.
+  // --kiosk launches in fullscreen with no toolbars/tabs/window decoration,
+  // so the iframe sees ONLY the page being tested — no chromium UI, no
+  // desktop background. Combined with no window manager (see run.sh), the
+  // browser fills the entire X display.
   const chromiumStreamArgs = [
     "--no-sandbox",
     "--disable-gpu",
     "--disable-dev-shm-usage",
     "--disable-software-rasterizer",
+    "--kiosk",
     "--window-size=1600,900",
-    "--start-maximized",
+    "--window-position=0,0",
   ]
 
   switch (name) {

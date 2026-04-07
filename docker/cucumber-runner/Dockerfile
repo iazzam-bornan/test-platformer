@@ -20,6 +20,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fluxbox \
     && rm -rf /var/lib/apt/lists/*
 
+# Hide the noVNC status bar so the iframe shows ONLY the remote desktop.
+# Injects a <style> block right before </head> in vnc_lite.html. The block
+# also normalises body margins so the canvas fills the viewport edge-to-edge.
+RUN sed -i 's|</head>|<style>#noVNC_status_bar{display:none !important;}html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;}#noVNC_container{height:100vh !important;}</style></head>|' /usr/share/novnc/vnc_lite.html
+
 # Install cucumber + ts-node for TypeScript step definitions
 COPY package.json ./
 RUN npm install --omit=dev && npm cache clean --force

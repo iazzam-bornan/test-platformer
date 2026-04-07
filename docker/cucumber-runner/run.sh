@@ -72,13 +72,18 @@ if [ "$STREAM_BROWSER" = "true" ]; then
     sleep 1
   done
 
-  # Tiny window manager so browser windows actually get decorated/managed
-  fluxbox -display :99 > /tmp/fluxbox.log 2>&1 &
-  VNC_PIDS="$! $VNC_PIDS"
+  # No window manager: chromium will be the only thing on the X display
+  # (combined with --kiosk it fills the entire screen with no chrome).
+
+  # Hide the noVNC status bar so the iframe shows only the remote desktop.
+  # Idempotent: only injects the style block if it isn't already present.
+  if ! grep -q "noVNC_status_bar{display:none" /usr/share/novnc/vnc_lite.html 2>/dev/null; then
+    sed -i 's|</head>|<style>#noVNC_status_bar{display:none !important;}html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;}</style></head>|' /usr/share/novnc/vnc_lite.html
+  fi
 
   # Start websockify to bridge noVNC WebSocket → VNC port 5900.
-  # --web also serves the noVNC static files at http://<host>:6080/vnc.html
-  # which the platform UI iframes (loading vnc.html same-origin avoids any
+  # --web also serves the noVNC static files at http://<host>:6080/vnc_lite.html
+  # which the platform UI iframes (loading it same-origin avoids any
   # cross-origin WebSocket handshake issue).
   websockify --web /usr/share/novnc 6080 localhost:5900 \
     > /tmp/websockify.log 2>&1 &
