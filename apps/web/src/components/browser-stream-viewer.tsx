@@ -1,5 +1,10 @@
-import { useMemo, useState } from "react"
-import { useBrowserStream, usePauseRun, useResumeRun } from "../hooks/useApi"
+import { useMemo } from "react"
+import {
+  useBrowserStream,
+  usePauseRun,
+  useResumeRun,
+  usePauseStatus,
+} from "../hooks/useApi"
 import { Button } from "@workspace/ui/components/button"
 
 interface Props {
@@ -30,14 +35,18 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
     runId,
     enabled
   )
-  const [paused, setPaused] = useState(false)
+  // Pause state comes from the API (which checks the actual flag file in
+  // the container) so it survives page refreshes and stays in sync across
+  // tabs. Polled every 3s while streaming is active.
+  const { data: pauseStatus } = usePauseStatus(runId, enabled && !!streamInfo)
+  const paused = pauseStatus?.paused ?? false
   const pauseRun = usePauseRun()
   const resumeRun = useResumeRun()
 
   const handlePause = async () => {
     try {
       await pauseRun.mutateAsync(runId)
-      setPaused(true)
+      // Status query will refetch via invalidation in the mutation hook
     } catch {
       // mutation error already surfaced via .isError
     }
@@ -46,7 +55,7 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
   const handleResume = async () => {
     try {
       await resumeRun.mutateAsync(runId)
-      setPaused(false)
+      // Status query will refetch via invalidation in the mutation hook
     } catch {
       // mutation error already surfaced via .isError
     }

@@ -163,10 +163,31 @@ export interface BrowserStreamInfo {
 }
 
 /**
+ * Get the current pause state of a run by checking the flag file inside
+ * the test-runner container. The source of truth is the file, not local
+ * UI state — this means refreshing the page shows the right state, and
+ * if the run finishes the file is gone so we report not-paused.
+ */
+export function usePauseStatus(runId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["pause-status", runId],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/runs/${runId}/browser-stream/pause`)
+      if (!res.ok) return { paused: false }
+      const data = await res.json()
+      return data.data as { paused: boolean }
+    },
+    enabled: !!runId && enabled,
+    refetchInterval: 3000,
+  })
+}
+
+/**
  * Pause the cucumber test runner at the next step boundary.
  * Only meaningful for runs with cucumber.streamBrowser=true.
  */
 export function usePauseRun() {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (runId: string) => {
       const res = await fetch(`${API_URL}/runs/${runId}/browser-stream/pause`, {
@@ -178,6 +199,9 @@ export function usePauseRun() {
       }
       return res.json()
     },
+    onSuccess: (_, runId) => {
+      queryClient.invalidateQueries({ queryKey: ["pause-status", runId] })
+    },
   })
 }
 
@@ -185,6 +209,7 @@ export function usePauseRun() {
  * Resume a paused cucumber test runner.
  */
 export function useResumeRun() {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (runId: string) => {
       const res = await fetch(`${API_URL}/runs/${runId}/browser-stream/resume`, {
@@ -195,6 +220,9 @@ export function useResumeRun() {
         throw new Error(err.error || "Failed to resume")
       }
       return res.json()
+    },
+    onSuccess: (_, runId) => {
+      queryClient.invalidateQueries({ queryKey: ["pause-status", runId] })
     },
   })
 }

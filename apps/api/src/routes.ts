@@ -500,6 +500,30 @@ export function createRunRoutes(platform: TestPlatform): Hono {
     })
   })
 
+  // Check whether the test runner is currently paused. The source of truth
+  // is the existence of /tmp/cucumber-pause.flag inside the container.
+  routes.get("/:id/browser-stream/pause", async (c) => {
+    const id = c.req.param("id")
+    const { getContainerIds } = await import("@testplatform/core/docker")
+    const ids = await getContainerIds(`tp-${id}`)
+    const containerId = ids["test-runner"]
+    if (!containerId) return c.json({ data: { paused: false } })
+
+    const { spawn } = await import("child_process")
+    const result = await new Promise<{ paused: boolean }>((resolve) => {
+      const proc = spawn(
+        "docker",
+        ["exec", containerId, "test", "-f", "/tmp/cucumber-pause.flag"],
+        { shell: false, stdio: ["ignore", "pipe", "pipe"] }
+      )
+      // `test -f` exits 0 if file exists, 1 if not
+      proc.on("close", (code) => resolve({ paused: code === 0 }))
+      proc.on("error", () => resolve({ paused: false }))
+    })
+
+    return c.json({ data: result })
+  })
+
   // Pause/resume the cucumber test runner. Touches/removes a flag file
   // inside the test-runner container; the BeforeStep hook polls for it
   // and sleeps while it exists. Pause takes effect at the next step.
