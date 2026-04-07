@@ -450,7 +450,45 @@ export function createRunRoutes(platform: TestPlatform): Hono {
         ? "127.0.0.1"
         : ipv4.HostIp
 
-    console.log(`[BROWSER-STREAM] resolved ${host}:${port}`)
+    console.log(`[BROWSER-STREAM] resolved ${host}:${port}, verifying websockify is responsive...`)
+
+    // Verify websockify is actually serving HTTP from inside the container.
+    // We use `docker exec <id> sh -c "</dev/tcp/127.0.0.1/6080"` — bash's
+    // /dev/tcp built-in, opens a TCP connection. Returns 0 if open, non-zero
+    // if not. This avoids needing curl/wget in the base image.
+    const { spawn: spawn2 } = await import("child_process")
+    const tcpCheck = await new Promise<{ ok: boolean }>((resolve) => {
+      const proc = spawn2(
+        "docker",
+        [
+          "exec",
+          containerId,
+          "bash",
+          "-c",
+          "cat </dev/tcp/127.0.0.1/6080 >/dev/null 2>&1 & sleep 0.2; kill $! 2>/dev/null",
+        ],
+        { shell: false, stdio: ["ignore", "pipe", "pipe"] }
+      )
+      let stderr = ""
+      proc.stderr.on("data", (d) => (stderr += d.toString()))
+      proc.on("close", (code) => {
+        // If `bash -c` runs at all, websockify is at least reachable.
+        // We don't care about the exact exit code — what matters is that
+        // bash is present and the test exec succeeded.
+        resolve({ ok: code === 0 || code === 143 })
+      })
+      proc.on("error", () => resolve({ ok: false }))
+    })
+
+    if (!tcpCheck.ok) {
+      console.log(`[BROWSER-STREAM] websockify not yet responding inside container — frontend should retry`)
+      return c.json(
+        { error: "VNC server starting up", ready: false },
+        503
+      )
+    }
+
+    console.log(`[BROWSER-STREAM] websockify is up at ${host}:${port}`)
 
     return c.json({
       data: {

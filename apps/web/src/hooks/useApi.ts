@@ -164,14 +164,18 @@ export interface BrowserStreamInfo {
 
 /**
  * Fetch the live browser stream WebSocket address for a run. Polls until the
- * test-runner container is up, then stops. Only meaningful for runs with
- * cucumber.streamBrowser=true.
+ * test-runner container's websockify is responsive, then stops. Only
+ * meaningful for runs with cucumber.streamBrowser=true.
  */
 export function useBrowserStream(runId: string, enabled: boolean) {
   return useQuery({
     queryKey: ["browser-stream", runId],
     queryFn: async () => {
       const res = await fetch(`${API_URL}/runs/${runId}/browser-stream`)
+      if (res.status === 503) {
+        // VNC server not ready yet — return null so we keep polling
+        return null
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || "Stream not available yet")
@@ -181,7 +185,7 @@ export function useBrowserStream(runId: string, enabled: boolean) {
     },
     enabled: !!runId && enabled,
     refetchInterval: (query) => {
-      // Stop polling once we have a valid stream info
+      // Stop polling once we have a non-null stream info
       if (query.state.data) return false
       return 2000
     },
