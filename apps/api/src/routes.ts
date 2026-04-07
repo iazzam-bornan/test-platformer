@@ -328,12 +328,26 @@ export function createRunRoutes(platform: TestPlatform): Hono {
   // noVNC server. The frontend connects directly.
   routes.get("/:id/browser-stream", async (c) => {
     const id = c.req.param("id")
+    console.log(`[BROWSER-STREAM] request for run ${id}`)
+
     const state = await platform.getRun(id)
-    if (!state) return c.json({ error: "Run not found" }, 404)
+    if (!state) {
+      console.log(`[BROWSER-STREAM] run ${id} not found`)
+      return c.json({ error: "Run not found" }, 404)
+    }
 
     // Verify streaming is actually enabled for this run
     const cucumber =
       "cucumber" in state.config.test ? state.config.test.cucumber : null
+    console.log(
+      `[BROWSER-STREAM] cucumber config:`,
+      cucumber
+        ? {
+            hasStreamBrowser: cucumber.streamBrowser,
+            hasStreamInteractive: cucumber.streamInteractive,
+          }
+        : "(not a cucumber test)"
+    )
     if (!cucumber?.streamBrowser) {
       return c.json({ error: "Browser streaming not enabled for this run" }, 400)
     }
@@ -344,20 +358,109 @@ export function createRunRoutes(platform: TestPlatform): Hono {
     )
     const projectName = `tp-${id}`
     const ids = await getContainerIds(projectName)
+    console.log(`[BROWSER-STREAM] containers in project ${projectName}:`, ids)
     const containerId = ids["test-runner"]
     if (!containerId) {
-      return c.json({ error: "Test runner container not found (not yet started?)" }, 404)
+      console.log(`[BROWSER-STREAM] test-runner container not found in project`)
+      return c.json(
+        {
+          error: "Test runner container not found (not yet started?)",
+          debug: { projectName, containers: ids },
+        },
+        404
+      )
     }
 
-    const hostPort = await getContainerHostPort(containerId, 6080)
-    if (!hostPort) {
-      return c.json({ error: "VNC port not mapped yet" }, 404)
+    console.log(`[BROWSER-STREAM] looking up port 6080 on container ${containerId}`)
+
+    // Run `docker inspect <id>` (no template) and parse the JSON output.
+    // We avoid `--format '{{json ...}}'` because on Windows + shell:true the
+    // {{ }} braces get mangled by the shell, producing
+    //   "template parsing error: template: :1: unclosed action"
+    // The full JSON inspect output is bigger but reliable across platforms.
+    const { spawn } = await import("child_process")
+    const inspectResult = await new Promise<{
+      stdout: string
+      stderr: string
+      code: number
+    }>((resolve) => {
+      const proc = spawn("docker", ["inspect", containerId], {
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      })
+      let stdout = ""
+      let stderr = ""
+      proc.stdout.on("data", (d) => (stdout += d.toString()))
+      proc.stderr.on("data", (d) => (stderr += d.toString()))
+      proc.on("close", (code) =>
+        resolve({ stdout, stderr, code: code ?? 1 })
+      )
+      proc.on("error", (err) =>
+        resolve({ stdout, stderr: String(err), code: 1 })
+      )
+    })
+
+    console.log(`[BROWSER-STREAM] docker inspect exit code:`, inspectResult.code)
+    if (inspectResult.stderr.trim()) {
+      console.log(`[BROWSER-STREAM] docker inspect stderr:`, inspectResult.stderr.trim())
     }
+
+    let portsMap: Record<
+      string,
+      Array<{ HostIp: string; HostPort: string }> | null
+    > = {}
+    try {
+      const parsed = JSON.parse(inspectResult.stdout.trim() || "null")
+      // `docker inspect <id>` returns an array of one container object
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        portsMap = parsed[0]?.NetworkSettings?.Ports ?? {}
+      }
+    } catch (err) {
+      console.log(`[BROWSER-STREAM] failed to parse docker inspect output`, err)
+    }
+
+    console.log(`[BROWSER-STREAM] parsed ports map:`, portsMap)
+
+    const bindings = portsMap["6080/tcp"]
+    if (!bindings || bindings.length === 0) {
+      console.log(
+        `[BROWSER-STREAM] 6080/tcp not in ports map. Available keys: ${Object.keys(portsMap).join(", ") || "(none)"}`
+      )
+      return c.json(
+        {
+          error: "VNC port not mapped yet",
+          debug: {
+            containerId,
+            availablePorts: Object.keys(portsMap),
+            inspectStdout: inspectResult.stdout.trim(),
+            inspectStderr: inspectResult.stderr.trim(),
+            inspectExit: inspectResult.code,
+          },
+        },
+        404
+      )
+    }
+
+    // Pick first IPv4 binding (HostIp doesn't contain ":")
+    const ipv4 = bindings.find((b) => b.HostIp && !b.HostIp.includes(":")) ?? bindings[0]
+    const port = parseInt(ipv4.HostPort, 10)
+    const host =
+      !ipv4.HostIp || ipv4.HostIp === "0.0.0.0" || ipv4.HostIp === "::"
+        ? "127.0.0.1"
+        : ipv4.HostIp
+
+    // Also try the cached core helper as a sanity check
+    const helperResult = await getContainerHostPort(containerId, 6080).catch(
+      (e) => ({ error: String(e) })
+    )
+    console.log(`[BROWSER-STREAM] core helper returned:`, helperResult)
+
+    console.log(`[BROWSER-STREAM] resolved ${host}:${port}`)
 
     return c.json({
       data: {
-        host: hostPort.host,
-        port: hostPort.port,
+        host,
+        port,
         path: "websockify",
         interactive: cucumber.streamInteractive ?? false,
       },

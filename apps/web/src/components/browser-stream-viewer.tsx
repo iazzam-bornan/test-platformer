@@ -20,15 +20,18 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
   const rfbRef = useRef<any>(null)
   const [state, setState] = useState<StreamState>("waiting")
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [debugUrl, setDebugUrl] = useState<string | null>(null)
 
   const { data: streamInfo, error: streamError } = useBrowserStream(runId, enabled)
 
   useEffect(() => {
     if (!enabled || !streamInfo || !canvasRef.current) return
 
-    // noVNC's RFB is a WebSocket client. Point it at the API-reported host:port.
-    // The websockify endpoint is served by the runner image on the same port.
-    const url = `ws://${streamInfo.host}:${streamInfo.port}/websockify`
+    // websockify accepts WebSocket connections at any path; use root for max
+    // compatibility (the "/websockify" path is only required behind certain
+    // reverse proxies, not when talking to websockify directly).
+    const url = `ws://${streamInfo.host}:${streamInfo.port}/`
+    setDebugUrl(url)
 
     setState("connecting")
     setErrorMsg(null)
@@ -36,7 +39,9 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
     let rfb: any
     try {
       rfb = new RFB(canvasRef.current, url, {
-        wsProtocols: ["binary"],
+        // Pass both subprotocols so noVNC can negotiate with whichever the
+        // server prefers. Older websockify only supports "base64".
+        wsProtocols: ["binary", "base64"],
       })
       // Scale to fit the container
       rfb.scaleViewport = true
@@ -46,20 +51,32 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
       const allowInput = streamInfo.interactive && localInteractive
       rfb.viewOnly = !allowInput
 
-      rfb.addEventListener("connect", () => setState("connected"))
+      rfb.addEventListener("connect", () => {
+        // eslint-disable-next-line no-console
+        console.log("[BrowserStreamViewer] connected to", url)
+        setState("connected")
+      })
       rfb.addEventListener("disconnect", (e: any) => {
+        // eslint-disable-next-line no-console
+        console.log("[BrowserStreamViewer] disconnected:", e?.detail)
         setState("disconnected")
         if (e?.detail?.clean === false) {
           setErrorMsg(e.detail?.reason || "Connection lost")
+        } else {
+          setErrorMsg("Disconnected")
         }
       })
       rfb.addEventListener("securityfailure", (e: any) => {
+        // eslint-disable-next-line no-console
+        console.log("[BrowserStreamViewer] security failure:", e?.detail)
         setState("error")
         setErrorMsg(`Security failure: ${e.detail?.reason || "unknown"}`)
       })
 
       rfbRef.current = rfb
     } catch (err) {
+      // eslint-disable-next-line no-console
+      console.log("[BrowserStreamViewer] connect threw:", err)
       setState("error")
       setErrorMsg(err instanceof Error ? err.message : "Failed to connect")
     }
@@ -121,11 +138,26 @@ export function BrowserStreamViewer({ runId, enabled, localInteractive }: Props)
             </span>
           )}
         </div>
+        {streamInfo && (
+          <a
+            href={`http://${streamInfo.host}:${streamInfo.port}/vnc.html?host=${streamInfo.host}&port=${streamInfo.port}&autoconnect=1`}
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono text-[10px] text-muted-foreground hover:text-foreground"
+          >
+            Open in new tab ↗
+          </a>
+        )}
       </div>
 
       {(streamError || errorMsg) && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
-          {errorMsg || (streamError as Error)?.message || "Stream unavailable"}
+          <div>{errorMsg || (streamError as Error)?.message || "Stream unavailable"}</div>
+          {debugUrl && (
+            <div className="mt-1 font-mono text-[10px] text-amber-400/70">
+              tried: {debugUrl}
+            </div>
+          )}
         </div>
       )}
 
