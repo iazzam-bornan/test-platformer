@@ -353,9 +353,7 @@ export function createRunRoutes(platform: TestPlatform): Hono {
     }
 
     // Look up the test-runner container and its mapped port
-    const { getContainerIds, getContainerHostPort } = await import(
-      "@testplatform/core/docker"
-    )
+    const { getContainerIds } = await import("@testplatform/core/docker")
     const projectName = `tp-${id}`
     const ids = await getContainerIds(projectName)
     console.log(`[BROWSER-STREAM] containers in project ${projectName}:`, ids)
@@ -444,16 +442,14 @@ export function createRunRoutes(platform: TestPlatform): Hono {
     // Pick first IPv4 binding (HostIp doesn't contain ":")
     const ipv4 = bindings.find((b) => b.HostIp && !b.HostIp.includes(":")) ?? bindings[0]
     const port = parseInt(ipv4.HostPort, 10)
+    // Use "localhost" rather than 127.0.0.1 — some browser/origin behaviors
+    // prefer hostname-form addresses for WebSocket cross-origin negotiation.
     const host =
       !ipv4.HostIp || ipv4.HostIp === "0.0.0.0" || ipv4.HostIp === "::"
-        ? "127.0.0.1"
-        : ipv4.HostIp
-
-    // Also try the cached core helper as a sanity check
-    const helperResult = await getContainerHostPort(containerId, 6080).catch(
-      (e) => ({ error: String(e) })
-    )
-    console.log(`[BROWSER-STREAM] core helper returned:`, helperResult)
+        ? "localhost"
+        : ipv4.HostIp === "127.0.0.1"
+          ? "localhost"
+          : ipv4.HostIp
 
     console.log(`[BROWSER-STREAM] resolved ${host}:${port}`)
 
@@ -463,6 +459,44 @@ export function createRunRoutes(platform: TestPlatform): Hono {
         port,
         path: "websockify",
         interactive: cucumber.streamInteractive ?? false,
+      },
+    })
+  })
+
+  // Debug: fetch the websockify log from inside the test-runner container.
+  // Useful for figuring out why a WebSocket upgrade is being rejected.
+  routes.get("/:id/browser-stream/log", async (c) => {
+    const id = c.req.param("id")
+    const { getContainerIds } = await import("@testplatform/core/docker")
+    const projectName = `tp-${id}`
+    const ids = await getContainerIds(projectName)
+    const containerId = ids["test-runner"]
+    if (!containerId) {
+      return c.json({ error: "Test runner not found" }, 404)
+    }
+
+    const { spawn } = await import("child_process")
+    const result = await new Promise<{ stdout: string; stderr: string; code: number }>(
+      (resolve) => {
+        const proc = spawn(
+          "docker",
+          ["exec", containerId, "cat", "/tmp/websockify.log"],
+          { shell: false, stdio: ["ignore", "pipe", "pipe"] }
+        )
+        let stdout = ""
+        let stderr = ""
+        proc.stdout.on("data", (d) => (stdout += d.toString()))
+        proc.stderr.on("data", (d) => (stderr += d.toString()))
+        proc.on("close", (code) => resolve({ stdout, stderr, code: code ?? 1 }))
+        proc.on("error", (err) => resolve({ stdout, stderr: String(err), code: 1 }))
+      }
+    )
+
+    return c.json({
+      data: {
+        log: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.code,
       },
     })
   })
